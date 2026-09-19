@@ -460,7 +460,7 @@ Codex Runtime
 
 当前未完成：
 
-- `src/main/project-files.ts` 仍保留面向 Project Files UI 的专用预览链路；它不是 MCP Core 的模型执行入口，后续需单独补充 IPC caller/workspace contract 后再迁移，不能用空身份临时接入。
+- `src/main/project-files.ts` 的目录、元数据和文本读取已通过 `CodexProjectTaskContract` 接入 adapter；编辑器 revision snapshot、图片/PDF 专用转换仍由 Project Files owner 负责，不能用 MCP conversation identity 替代。
 - 尚未移除 Agent/Goal runtime；该工作属于 Phase 3/4。
 - 本次对话不编译、不运行测试；静态 `git diff --check` 已通过，编译/测试证据留待后续授权。
 

@@ -44,8 +44,9 @@ Implemented in `src/main/codex/runtime-adapter.ts`: the MCP Core handler passes 
 `CodexTaskContract` to the existing Codex file, directory, image, search, patch and terminal
 ports. Process-id allocation, `exec_command` and `write_stdin` share that same boundary. COS
 still owns permission, caller proof, process ownership and recording; the adapter owns only the
-execution boundary. The Project Files IPC preview path remains separate until it has its own
-proven caller/workspace contract.
+execution boundary. Project Files uses a separate explicit `project-files` task contract for
+directory, metadata and text reads; editor snapshots and image/PDF transformations remain in
+the UI-specific owner.
 
 ## Phase 3
 

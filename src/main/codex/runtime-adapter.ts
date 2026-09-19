@@ -21,6 +21,18 @@ export interface CodexTaskContract {
   workspace: { real: string; virtual: string } | null;
 }
 
+/** Explicit renderer/project proof for Project Files; it is not a guessed MCP conversation. */
+export interface CodexProjectTaskContract {
+  kind: 'project-files';
+  requestId: null;
+  sessionId: null;
+  conversationId: null;
+  projectId: string;
+  workspace: { real: string; virtual: string };
+}
+
+export type CodexExecutionTask = CodexTaskContract | CodexProjectTaskContract;
+
 export class CodexRuntimeError extends Error {
   constructor(readonly operation: string, message: string, options?: { cause?: unknown }) {
     super(message, options);
@@ -43,17 +55,17 @@ export interface CodexRuntimePorts {
 }
 
 export interface CodexRuntimeAdapter {
-  readTextFile(task: CodexTaskContract, ...input: Parameters<typeof readTextFile>): ReturnType<typeof readTextFile>;
-  statInfo(task: CodexTaskContract, ...input: Parameters<typeof statInfo>): ReturnType<typeof statInfo>;
-  listDirectoryLevel(task: CodexTaskContract, ...input: Parameters<typeof listDirectoryLevel>): ReturnType<typeof listDirectoryLevel>;
-  walkFiles(task: CodexTaskContract, ...input: Parameters<typeof walkFiles>): ReturnType<typeof walkFiles>;
-  viewImage(task: CodexTaskContract, ...input: Parameters<typeof viewImage>): ReturnType<typeof viewImage>;
-  search(task: CodexTaskContract, ...input: Parameters<typeof search>): ReturnType<typeof search>;
-  searchOneFile(task: CodexTaskContract, ...input: Parameters<typeof searchOneFile>): ReturnType<typeof searchOneFile>;
-  applyPatch(task: CodexTaskContract, input: Parameters<typeof executeApplyPatch>[0]): Promise<ApplyPatchExecution>;
-  allocateProcessId(task: CodexTaskContract): number;
-  execCommand(task: CodexTaskContract, input: ExecCommandRequest): Promise<ExecCommandToolOutput>;
-  writeStdin(task: CodexTaskContract, input: WriteStdinRequest): Promise<ExecCommandToolOutput>;
+  readTextFile(task: CodexExecutionTask, ...input: Parameters<typeof readTextFile>): ReturnType<typeof readTextFile>;
+  statInfo(task: CodexExecutionTask, ...input: Parameters<typeof statInfo>): ReturnType<typeof statInfo>;
+  listDirectoryLevel(task: CodexExecutionTask, ...input: Parameters<typeof listDirectoryLevel>): ReturnType<typeof listDirectoryLevel>;
+  walkFiles(task: CodexExecutionTask, ...input: Parameters<typeof walkFiles>): ReturnType<typeof walkFiles>;
+  viewImage(task: CodexExecutionTask, ...input: Parameters<typeof viewImage>): ReturnType<typeof viewImage>;
+  search(task: CodexExecutionTask, ...input: Parameters<typeof search>): ReturnType<typeof search>;
+  searchOneFile(task: CodexExecutionTask, ...input: Parameters<typeof searchOneFile>): ReturnType<typeof searchOneFile>;
+  applyPatch(task: CodexExecutionTask, input: Parameters<typeof executeApplyPatch>[0]): Promise<ApplyPatchExecution>;
+  allocateProcessId(task: CodexExecutionTask): number;
+  execCommand(task: CodexExecutionTask, input: ExecCommandRequest): Promise<ExecCommandToolOutput>;
+  writeStdin(task: CodexExecutionTask, input: WriteStdinRequest): Promise<ExecCommandToolOutput>;
 }
 
 /** Normalize only non-Error foreign values; preserve typed runtime errors for existing callers. */

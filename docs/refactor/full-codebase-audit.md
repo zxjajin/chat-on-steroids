@@ -75,9 +75,10 @@ Codex model/agent service. `runtime-adapter.ts` is the integration seam. COS sup
 permission, containment, process ownership, recording and MCP presentation. Codex ports perform
 bounded file, search, patch, image and unified-exec work.
 
-The Project Files IPC preview path in `src/main/project-files.ts` remains separate because its
-IPC caller/workspace proof has not yet been expressed as a valid Task Contract. It must not be
-connected using an empty or guessed identity.
+The Project Files IPC path in `src/main/project-files.ts` uses an explicit `project-files` task
+contract containing the exact project id and contained workspace. Its editor revision snapshot
+and image/PDF-specific transformations remain Project Files-owned; they must not be connected
+using an empty or guessed MCP conversation identity.
 
 ## Duplicate Capability Analysis
 
