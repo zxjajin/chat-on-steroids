@@ -542,6 +542,15 @@ NOT_STARTED
 
 当前不删除 Agent broker、Goal/Loop、Session、Timeline、MCP 或 Project Files；它们仍有产品职责或仍存在调用链。
 
+## Phase 4 Audit
+
+静态调用审计结论：
+
+- `src/main/agents.ts` 仍被 Bridge、IPC、startup、MCP kernel、browser tools、continuation、correlation、progress 和新的 `tools-agents.ts` 使用。
+- `src/main/goal.ts` 仍被 Bridge、IPC、continuation、finish 和 input 使用。
+- `src/main/swarm` 当前不存在；不能把不存在的目录当作可删除实现。
+- 当前没有满足“无调用 + 有替代 + 有验证”的重复 Coding executor/tool/workflow 候选，因此本阶段不删除源码。
+
 
 # Phase 5: Cleanup
 
