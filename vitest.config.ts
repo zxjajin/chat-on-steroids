@@ -4,6 +4,10 @@ export default defineConfig({
   test: {
     include: ['test/**/*.test.ts'],
     environment: 'node',
+    // Several suites exercise the real Windows desktop helper, PowerShell children and
+    // loopback bridge. The default worker count makes those files contend for the same host
+    // desktop/process resources; keep useful file parallelism, but bound the contention.
+    maxWorkers: 4,
     // Real filesystem, real child processes and a real HTTP server, so the
     // defaults are too tight.
     testTimeout: 30_000,

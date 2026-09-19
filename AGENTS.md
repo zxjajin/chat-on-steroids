@@ -219,7 +219,7 @@ Paths in this section are repository-relative. Most mechanisms have `main`, `sha
 | Code composition | `src/main/mcp/code-mode-{tool,runtime,worker}.ts`: surface-scoped `exec`, QuickJS admission, limits and explicit emissions. |
 | Instructions/plan | `src/main/mcp/{instructions,coding-instructions,plan-tool}.ts`, `src/shared/agent-plan.ts`, `src/renderer/agent-plan.ts`: executor contract and displayed progress plan. |
 | Local files/processes | `src/main/{rawfs,fsops,search,ripgrep,env,toolchain,exec,exec-hints,text-match,diffstat}.ts`, `src/main/codex/*`: bounded filesystem/shell implementation. |
-| Terminal custody | `src/main/codex/{manager,ownership,unified-exec,unified-exec-constants,shell,command-batch,head-tail-buffer,truncate,exec-output}.ts`. |
+| Terminal custody | `src/main/terminal-ownership.ts`, `src/main/codex/{manager,ownership,unified-exec,unified-exec-constants,shell,command-batch,head-tail-buffer,truncate,exec-output}.ts`: COS caller/session custody with Codex process execution. |
 | Patching/images | `src/main/codex/apply-patch/*`, `codex/{filesystem,read-backend,view-image}.ts`. |
 | Projects/cwd | `src/main/projects.ts`, `workspace.ts`, `src/shared/projects.ts`: explicit local folder catalog, session binding, inherited/learned workspaces. |
 | Project Files UI | `src/main/project-files.ts`, `project-file-watcher.ts`, `src/shared/project-files.ts`, `src/renderer/{file-panel,file-code-editor,file-pdf-viewer,work-panel-resize}.ts`: bounded project views, revision-checked saves and renderer-owned drafts. |
@@ -661,9 +661,10 @@ the port's explicit line-ending mode and readable parse/match failures.
 
 ### Terminal execution and custody
 
-One app-lifetime `codex/manager.ts` owns `UnifiedExecProcessManager`. `exec_command` runs a shell,
+One app-lifetime `codex/manager.ts` owns `UnifiedExecProcessManager`. `terminal-ownership.ts`
+owns COS caller/session custody. `exec_command` runs a shell,
 returns output and a process id; `write_stdin` continues that same process, sends input
-or drains output. Caller isolation is in `ownership.ts`, not separate managers per request.
+or drains output. Caller isolation is in `terminal-ownership.ts`, not separate managers per request.
 
 Every successful launch also returns a session id when it finishes immediately. Empty
 `write_stdin` calls can reread completed output after direct polling or automatic delivery;

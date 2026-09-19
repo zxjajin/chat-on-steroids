@@ -18,8 +18,8 @@ import * as desktopBackend from '../src/main/computer/index.js';
 import sharp from 'sharp';
 import { randomBytes } from 'node:crypto';
 import { unifiedExecManager } from '../src/main/codex/manager.js';
-import { noteExecOwner, forgetExecOwner } from '../src/main/codex/ownership.js';
-import * as ownership from '../src/main/codex/ownership.js';
+import { noteExecOwner, forgetExecOwner } from '../src/main/terminal-ownership.js';
+import * as ownership from '../src/main/terminal-ownership.js';
 import type { ExecCommandToolOutput } from '../src/main/codex/unified-exec.js';
 import { makeTempDir, removeTempDir } from './helpers.js';
 

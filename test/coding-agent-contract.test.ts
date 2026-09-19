@@ -1,0 +1,43 @@
+import { describe, expect, it } from 'vitest';
+import {
+  createCodexCodingTask,
+  normalizeCodexCodingTask,
+  renderCodexCodingTask
+} from '../src/main/codex/coding-task.js';
+import {
+  WORKER_FINISH_DESCRIPTION,
+  renderWorkerBootstrap,
+  renderWorkerRevival
+} from '../src/main/agent-worker-protocol.js';
+
+describe('Codex task and COS worker protocol contract', () => {
+  it('renders structured coding intent as the legacy worker brief', () => {
+    const task = createCodexCodingTask('Update the parser', 'Use the repository conventions.');
+
+    expect(renderCodexCodingTask(task)).toBe(
+      'Shared context for every worker in this run:\nUse the repository conventions.\n\nYour task:\nUpdate the parser'
+    );
+    expect(renderWorkerBootstrap('worker-1', task)).toContain('you are worker-1, a worker');
+    expect(renderWorkerBootstrap('worker-1', task)).toContain('Update the parser');
+  });
+
+  it('keeps direct legacy task strings compatible', () => {
+    const task = normalizeCodexCodingTask('Inspect the bridge');
+
+    expect(task).toEqual({ kind: 'coding', objective: 'Inspect the bridge', context: null });
+    expect(renderWorkerBootstrap('worker-2', 'Inspect the bridge')).toContain('Inspect the bridge');
+  });
+
+  it('keeps the worker handoff contract visible at the Automation boundary', () => {
+    expect(WORKER_FINISH_DESCRIPTION).toContain('VALIDATION');
+  });
+
+  it('keeps revival protocol text at the Automation boundary', () => {
+    expect(renderWorkerRevival('worker-3', 'Continue the parser work')).toContain(
+      'you are still worker-3 in the same run'
+    );
+    expect(renderWorkerRevival('worker-3', 'Continue the parser work')).toContain(
+      'action=finish when this piece is done'
+    );
+  });
+});

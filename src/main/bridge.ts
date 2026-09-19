@@ -18,6 +18,7 @@ export { setBrowserWorkArea } from './browser-window-layout.js';
 import { pendingBrowserPreferenceRequest, acknowledgeBrowserPreferences } from './browser-preferences.js';
 import { sessionFinishHeld, releaseSessionFinish, getSessionFinishDraft, sessionFinishWaiting } from './session/finish.js';
 import { observeUsage } from './session/usage.js';
+import { renderWorkerBootstrap } from './agent-worker-protocol.js';
 import { pendingBrowserInputs, claimBrowserInput, acknowledgeBrowserInput, bindBrowserInputProject, failBrowserInput, completeBrowserDecision, listInputs, fileSilenceInput, fileRecoveryInput, advanceRecoveryInput, hasQueuedAfterTurnInput, inputBeforeGoal, pendingQueuedPickups, deferSilenceInput, revokeSilenceInputs } from './session/input.js';
 /**
  * The local bridge between the Chrome extension and this app.
@@ -8204,26 +8205,7 @@ function bootstrapText(spec: CommandSpec, summary: string): string {
     return revivalFor(spec.agent, spec.runId)?.text ?? '';
   }
   if (spec.type === 'worker') {
-    // The brief, then the shortest protocol that still routes: who you are, where reports go,
-    // and that other workers are not reachable. Nothing about identity beyond the name,
-    // because there is nothing for the model to do about it — this chat was opened for a
-    // worker slot and is bound to it by the extension's report before this text is read.
-    //
-    // It is short on purpose, and the purpose is not tokens. This paragraph is the first user
-    // message in a brand-new ChatGPT conversation, and a long block of scaffolding about
-    // agents and swarms in that position is exactly the shape ChatGPT's own abuse heuristics
-    // score. A model does not need five sentences to learn a two-verb protocol.
-    //
-    // The last word is `ultrathink`, and it is one word for the same reason. A worker is the
-    // one agent here that gets a task with no conversation in front of it and no chance to
-    // ask a clarifying question, so the one thing worth spending a token on is asking it to
-    // think before it starts.
-    return (
-      `${spec.task}\n\n` +
-      `(Chat On Steroids: you are ${spec.agent}, a worker. Report to prime through the agents tool — ` +
-      'action=message to="prime" as you go, action=finish once at the end. Workers cannot reach each other. ' +
-      'ultrathink)'
-    );
+    return renderWorkerBootstrap(spec.agent, spec.task);
   }
   return resumeBootstrapText(summary, spec.token);
 }

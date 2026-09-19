@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { Stats } from 'node:fs';
 import sharp from 'sharp';
 import { getConfig } from './config.js';
-import { listDirectoryLevel, readTextFile, statInfo } from './codex/read-backend.js';
+import { codexRuntime, type CodexProjectTaskContract } from './codex/runtime-adapter.js';
 import { getProject, projectWorkspace } from './projects.js';
 import { rawPromises as fs } from './rawfs.js';
 import { isContained, resolvePath, SandboxError } from './sandbox.js';
@@ -82,6 +82,17 @@ export interface ProjectFileTarget {
   path: string;
   real: string;
   kind: ProjectFileKind;
+}
+
+function projectTask(target: Pick<ProjectFileTarget, 'projectId' | 'projectReal' | 'projectVirtual'>): CodexProjectTaskContract {
+  return {
+    kind: 'project-files',
+    requestId: null,
+    sessionId: null,
+    conversationId: null,
+    projectId: target.projectId,
+    workspace: { real: target.projectReal, virtual: target.projectVirtual }
+  };
 }
 
 function normaliseRelative(input: string): string {
@@ -204,7 +215,7 @@ export async function projectFileTarget(
 export async function listProjectDirectory(projectId: string, relativeDirectory = ''): Promise<ProjectDirectoryListing> {
   const target = await projectFileTarget(projectId, relativeDirectory, { allowRoot: true });
   if (target.kind !== 'directory') throw new Error('Choose a project folder');
-  const listed = await listDirectoryLevel(target.real, target.path, MAX_DIRECTORY_ENTRIES, false);
+  const listed = await codexRuntime.listDirectoryLevel(projectTask(target), target.real, target.path, MAX_DIRECTORY_ENTRIES, false);
   return {
     projectId,
     projectName: target.projectName,
@@ -221,7 +232,8 @@ export async function listProjectDirectory(projectId: string, relativeDirectory 
 
 export async function previewProjectFile(projectId: string, relativePath: string): Promise<ProjectFilePreview> {
   const target = await projectFileTarget(projectId, relativePath, { allowRoot: false, fileOnly: true });
-  const info = await statInfo(target.real, target.path, { scanContent: true });
+  const task = projectTask(target);
+  const info = await codexRuntime.statInfo(task, target.real, target.path, { scanContent: true });
   if (info.type !== 'file') throw new Error('Choose a regular file');
   const extension = path.extname(target.real).toLowerCase();
   const imageMimeType = IMAGE_MIME_BY_EXTENSION.get(path.extname(target.real).toLowerCase());
@@ -375,7 +387,7 @@ export async function previewProjectFile(projectId: string, relativePath: string
     }
   }
   try {
-    read = await readTextFile(target.real, { maxBytes: MAX_PREVIEW_BYTES });
+    read = await codexRuntime.readTextFile(task, target.real, { maxBytes: MAX_PREVIEW_BYTES });
   } catch (error) {
     if (error instanceof Error && /Line \d+ is larger than max_bytes=/.test(error.message)) {
       return {

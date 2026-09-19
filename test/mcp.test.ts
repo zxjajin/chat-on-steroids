@@ -57,7 +57,7 @@ import {
   forgetExecOwner,
   resetExecOwnershipForTests,
   UNATTENDED_EXEC_NOTICE_MS
-} from '../src/main/codex/ownership.js';
+} from '../src/main/terminal-ownership.js';
 import { unifiedExecManager } from '../src/main/codex/manager.js';
 import { locateRipgrep } from '../src/main/ripgrep.js';
 import { IS_WINDOWS, makeTempDir, removeTempDir, writeTree } from './helpers.js';

@@ -24,6 +24,12 @@ import { inheritWorkspace, releasePrimeWorkspace, bindAgentWorkspace } from './w
 import { requestCorrelation } from './session/correlation.js';
 import { getSession, findSessionByConversation } from './session/store.js';
 import { continuationForSession } from './session/continuation.js';
+import {
+  normalizeCodexCodingTask,
+  renderCodexCodingTask,
+  type CodexCodingTask
+} from './codex/coding-task.js';
+import { renderWorkerRevival } from './agent-worker-protocol.js';
 
 export const PRIME_ID = 'prime';
 
@@ -963,22 +969,6 @@ export function identify(caller: Caller): AgentInfo {
 
 // -------------------------------------------------------------------- state
 
-/**
- * The one message a worker is opened with: the run's shared context, then its own task.
- *
- * Labelled, because the two halves are addressed differently — the context is standing
- * instruction for everyone in the run, the task is this worker's job — and a worker that
- * cannot tell them apart is one that reports back on the house rules.
- */
-function briefFor(context: string, task: string): string {
-  if (!context) return task;
-  return `Shared context for every worker in this run:
-${context}
-
-Your task:
-${task}`;
-}
-
 function makeWorker(id: string, label: string, task: string, model: string | null, reasoningEffort: ReasoningEffort | null): Agent {
   return {
     info: {
@@ -1194,7 +1184,12 @@ export function forgetRetiredWorker(conversationId: string): void {
 // -------------------------------------------------------------------- spawn
 
 export interface SpawnInput {
-  workers: ReadonlyArray<{ label?: string; task: string; model?: string | null; reasoning_effort?: string | null }>;
+  workers: ReadonlyArray<{
+    label?: string;
+    task: string | CodexCodingTask;
+    model?: string | null;
+    reasoning_effort?: string | null;
+  }>;
   /**
    * What every worker in this spawn needs to know, written once.
    *
@@ -1423,7 +1418,11 @@ export function spawn(input: SpawnInput, options: SpawnOptions = {}): SpawnResul
 
   const observedModels = getChatModels().models;
   const planned = input.workers.map((worker, index) => {
-    const task = worker.task.trim();
+    const codingTask = normalizeCodexCodingTask(worker.task, context);
+    if ((codingTask.context?.length ?? 0) > MAX_CONTEXT_CHARS) {
+      throw new AgentError(`The shared context is too long (limit ${MAX_CONTEXT_CHARS} characters)`);
+    }
+    const task = codingTask.objective.trim();
     if (!task) throw new AgentError(`Worker ${index + 1} has no task. Every worker needs one.`);
     if (task.length > MAX_TASK_CHARS) throw new AgentError(`Worker ${index + 1}'s task is too long`);
     const label = worker.label?.trim() ?? '';
@@ -1437,7 +1436,7 @@ export function spawn(input: SpawnInput, options: SpawnOptions = {}): SpawnResul
     // the browser types, the repeated-spawn match, the status table, the snapshot — then
     // sees the same single string a worker actually receives, with no second field to keep
     // in step and no way for the two halves to be delivered apart.
-    return { label, task: briefFor(context, task), model, reasoningEffort };
+    return { label, task: renderCodexCodingTask(codingTask), model, reasoningEffort };
   });
 
   const conversationId = input.caller.conversationId ?? null;
@@ -2725,11 +2724,10 @@ function planRevivalText(agent: Agent): { text: string; messageIds: string[] } {
     chars += message.text.length;
   }
   const body = waiting.map((message) => message.text).join('\n\n');
-  const text =
-    (body || 'The prime agent has more work for you; check your inbox on the next tool result.') +
-    `\n\n(Chat On Steroids: you are still ${agent.info.id} in the same run, and this is the prime agent talking to ` +
-    'you again in the chat you already know. Pick up from what you did here before rather than starting over. ' +
-    'Report with agents action=message to="prime" as you go and action=finish when this piece is done.)';
+  const text = renderWorkerRevival(
+    agent.info.id,
+    body || 'The prime agent has more work for you; check your inbox on the next tool result.'
+  );
   return { text, messageIds: waiting.map((message) => message.id) };
 }
 

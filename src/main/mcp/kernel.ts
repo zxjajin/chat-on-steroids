@@ -99,7 +99,7 @@ import {
   backgroundExecRecoveryNotices,
   executionPrincipal,
   offerBackgroundExecOutput
-} from '../codex/ownership.js';
+} from '../terminal-ownership.js';
 import { DEFAULT_MAX_OUTPUT_TOKENS } from '../codex/unified-exec-constants.js';
 import { unattributedRepairEta } from '../bridge.js';
 import { conversationAttachment, readOverflowText } from '../session/store.js';

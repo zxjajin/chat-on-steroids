@@ -5,7 +5,7 @@ import { updateSessionPlan } from '../session/store.js';
 import { attachRequestPlan, updateRequestPlan } from '../session/request-plans.js';
 import { requestCorrelation } from '../session/correlation.js';
 import { getConfig } from '../config.js';
-import { agentPlanUpdateSchema } from '../../shared/agent-plan.js';
+import { CODING_PLAN_DESCRIPTION, codexCodingPlanUpdateSchema } from '../codex/coding-plan.js';
 
 /**
  * Adapted from OpenAI Codex's update_plan (Apache-2.0), revision
@@ -15,8 +15,8 @@ import { agentPlanUpdateSchema } from '../../shared/agent-plan.js';
 export function registerPlanTool(reg: SurfaceRegistrar): void {
   reg.register('update_plan', toolDeclaration('update_plan', () => ({
     title: 'Update plan',
-    description: 'Updates your task plan in the user’s app. Use for work with several meaningful steps; skip simple tasks. Send the complete plan with short step headlines, useful details and current statuses. Keep at most one step in_progress. Update after completing a step or changing approach. This only displays a plan; it does not execute steps or advance queued stages.',
-    inputSchema: agentPlanUpdateSchema,
+    description: CODING_PLAN_DESCRIPTION,
+    inputSchema: codexCodingPlanUpdateSchema,
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false }
   })), update => guard('update_plan', async () => {
     if (!reg.sessionToolsLive) return reg.featureDisabled('Session recording', 'Settings → Chat');

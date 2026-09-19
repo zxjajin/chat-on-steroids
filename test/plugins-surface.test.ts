@@ -13,7 +13,7 @@ import { makeTempDir, removeTempDir } from './helpers.js';
 import * as recorder from '../src/main/session/recorder.js';
 import * as input from '../src/main/session/input.js';
 import * as agents from '../src/main/agents.js';
-import * as ownership from '../src/main/codex/ownership.js';
+import * as ownership from '../src/main/terminal-ownership.js';
 import * as bridge from '../src/main/bridge.js';
 
 const plugin = vi.hoisted(() => ({
