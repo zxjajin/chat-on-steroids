@@ -525,6 +525,7 @@ Codex Coding Agent
 - Coding Planning / Worker Execution / Code Modification 尚未全部迁移为独立 Codex Coding Agent；必须先确定现有 worker bootstrap 与 Codex task contract 的完整替代关系。
 - 当前契约只完成 Coding Task 的入口结构化，尚未替换 ChatGPT worker 的执行/报告/验证生命周期。
 - Worker bootstrap 的协议文本已迁移；worker 的实际 ChatGPT 执行、结果 durable handoff 和验证仍由现有 Automation 路径负责。
+- `test/coding-agent-contract.test.ts` 已补充 Coding Task、legacy brief、worker bootstrap 和 handoff contract 的回归覆盖；按本次对话约束尚未执行。
 - 本次对话不编译、不运行测试；仅做静态依赖与补丁检查。
 
 
