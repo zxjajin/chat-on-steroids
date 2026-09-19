@@ -401,14 +401,14 @@ agent-panel.ts
 风险与未覆盖：
 
 - 本阶段只隔离 renderer UI，不改变 main/shared runtime、权限、MCP 或 worker 生命周期。
-- 尚未进入 Phase 2，也未删除任何重复 runtime。
+- 已进入 Phase 2；本阶段只隔离 renderer UI，不删除任何重复 runtime。
 
 
 # Phase 2: Codex Runtime Integration
 
 Status:
 
-IN_PROGRESS
+IMPLEMENTED (validation pending)
 
 目标：
 
@@ -467,6 +467,10 @@ Phase 2 实现边界已完成，验证状态仍为待补充；未满足验证前
 
 # Phase 3: Agent Runtime Decoupling
 
+Status:
+
+IN_PROGRESS
+
 目标：
 
 拆分：
@@ -519,6 +523,10 @@ Codex Coding Agent
 
 # Phase 4: Duplicate Runtime Removal
 
+Status:
+
+NOT_STARTED
+
 删除候选：
 
 - Duplicate Coding Executor
@@ -532,8 +540,14 @@ Codex Coding Agent
 - 有替代
 - 有测试
 
+当前不删除 Agent broker、Goal/Loop、Session、Timeline、MCP 或 Project Files；它们仍有产品职责或仍存在调用链。
+
 
 # Phase 5: Cleanup
+
+Status:
+
+IN_PROGRESS
 
 最终：
 
@@ -582,7 +596,7 @@ Next Step
 继续执行：
 
 ```
-Phase 2: Codex Runtime Integration
+Phase 3: Agent Runtime Decoupling
 ```
 
-Phase 1 已完成；Phase 2 完成并验证后进入 Phase 3。
+Phase 1 已完成；Phase 2 实现已完成但验证待补；Phase 3 正在进行。

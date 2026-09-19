@@ -51,7 +51,7 @@ Workspace
 
 不引入完整 Codex Agent Runtime。
 
-## 收敛模块
+## Automation Boundary
 
 ### Agent Orchestration
 
@@ -63,12 +63,15 @@ Workspace
 - Message
 - Finish
 
-这些能力属于多 Agent 平台，不属于本项目核心。
+这些能力属于 Chat On Steroids 的 Automation 层，不属于 Codex Coding Runtime；它们仍负责
+worker durable history、消息路由、Goal/Loop 以及 Timeline 投影，不应因为 Coding Runtime
+迁移而被删除。
 
 处理方式：
 
-- 第一阶段关闭入口
-- 第二阶段删除无调用代码
+- 第一阶段隔离 renderer 和 MCP registration 入口
+- 第二阶段只删除已经由 Codex replacement 覆盖且无调用的重复 Coding executor
+- Automation Agent 的用户数据和运行时保持兼容
 
 ### Goal Loop
 
@@ -82,10 +85,14 @@ Goal Loop 不作为默认流程。
 
 ## 最终定位
 
-Chat On Steroids = ChatGPT Local Code Bridge
+Chat On Steroids = ChatGPT Productivity Platform + Local Code Bridge
 
-不是：
+Codex Runtime = Coding Agent Execution Layer
 
-- Agent 平台
-- Multi Agent 框架
-- 第二模型调度系统
+不把 Chat On Steroids 的 Automation 能力误判为重复 Coding Runtime，也不把 Codex Runtime
+扩展成第二个 ChatGPT connector。
+
+Chat On Steroids 不是：
+
+- Coding Agent Runtime 的 owner
+- Codex Runtime 的替代实现

@@ -6,7 +6,7 @@
 
 先关闭入口，再确认无依赖，最后删除代码。
 
-## 第一阶段：禁用
+## 第一阶段：隔离
 
 目标模块：
 
@@ -18,9 +18,9 @@ src/main/swarm
 
 处理：
 
-- 保留代码
-- 增加 feature flag
-- 默认关闭 Agent 调度
+- 保留代码和 durable state
+- `multiAgent.enabled` 只控制 UI/工具暴露的当前 live gate
+- 不把 UI 隐藏误当作停止 runtime，也不改变 Goal/Loop/Automation 的保存语义
 
 ## 第二阶段：MCP 收敛
 
@@ -34,25 +34,22 @@ src/main/swarm
 - exec
 - workspace_info
 
-逐步移除：
+后续只有在有替代和验证后才评估：
 
-- agents.spawn
-- agents.message
-- agents.finish
-- goal continuation
+- 重复的 Coding executor/tool/workflow
+- 已迁移且无调用的旧入口
 
 ## 第三阶段：代码清理
 
-确认无调用后删除：
+确认无调用、已有替代、验证通过并完成迁移文档后才删除：
 
-- Worker 生命周期
-- Multi Agent 状态机
-- Goal Loop 驱动
-- 第二模型调用链
+- 重复的 Coding Worker executor
+- 重复的 Coding tool runtime
+- 重复的 Repository workflow
 
 ## 不删除
 
-保留：
+必须保留：
 
 - Session
 - Durable Store
@@ -60,5 +57,7 @@ src/main/swarm
 - Permission
 - Codex Tools
 - Bridge
+- Automation / Goal / Loop
+- Agent durable history（除非用户明确要求产品下线）
 
 这些属于本地执行桥核心能力。

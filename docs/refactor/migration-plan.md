@@ -14,15 +14,15 @@
 - removal-plan.md
 - migration-plan.md
 
-## Phase 1 - 收敛入口
+## Phase 1 - Capability Isolation
 
-目标：不改变执行能力，只减少 Agent 自动化。
+目标：不改变执行能力，只隔离 MultiAgent 的 renderer 入口。
 
 任务：
 
-- 增加 Agent 功能开关
-- 默认关闭 Worker/Goal
-- 保留现有执行工具
+- `multiAgent.enabled` 成为 Agent Plan、Worker/Swarm UI 和 Agent Panel 的统一可见性开关
+- 保留 SwarmState、Session History、Timeline、Goal/Loop、Automation 和现有执行工具
+- 不以 renderer 开关停止 Agent runtime 或删除 Agent 数据
 
 验证：
 
@@ -30,7 +30,29 @@ ChatGPT -> MCP -> Tool -> Workspace
 
 链路正常。
 
-## Phase 2 - MCP Tool 收敛
+## Phase 2 - Codex Runtime Integration
+
+通过 `CodexTaskContract` 将 MCP Core 的文件、搜索、Patch、图片和 Terminal 调用交给
+`src/main/codex/runtime-adapter.ts`；权限、caller proof、进程所有权和 Session recording
+仍由 Chat On Steroids 负责。
+
+Project Files IPC 预览暂不接入空身份 contract，等待独立的 IPC caller/workspace proof。
+
+## Phase 3 - Agent Runtime Decoupling
+
+拆分 COS Automation Agent 的 MCP 注册/生命周期模块与 Coding Core；保留 Goal/Loop 和
+Agent durable history，直到替代 contract、调用迁移和验证证据齐备。
+
+## Phase 4 - Duplicate Runtime Removal
+
+仅删除同时满足“无调用、有替代、有验证、有迁移文档”的重复 Coding executor/tool/workflow。
+不删除 Automation、Session、Timeline、MCP Bridge 或用户数据。
+
+## Phase 5 - Cleanup
+
+统一文档和模块命名，删除已经证实无调用的旧引用。
+
+<!-- 旧的工具分组记录，仅作为历史对照，不是当前删除清单。
 
 统一工具模型：
 
@@ -52,14 +74,7 @@ Process
 - exec_start
 - exec_read
 - exec_kill
-
-## Phase 3 - 清理
-
-删除无调用 Agent 代码：
-
-- worker orchestration
-- goal driver
-- swarm manager
+-->
 
 ## 验收标准
 
