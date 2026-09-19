@@ -167,6 +167,8 @@ DONE
 docs/refactor/full-codebase-audit.md
 ```
 
+当前文件已补齐，并汇总模块、数据流、生命周期、MCP、Agent、Codex、重复能力和迁移证据。
+
 
 内容：
 
