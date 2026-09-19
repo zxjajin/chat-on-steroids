@@ -58,10 +58,10 @@ module-boundary step only. `tools-agents.ts` now creates the Codex-owned `CodexC
 contract before entering the durable Agent broker. The durable Agent broker, worker bootstrap and
 Goal/Loop behavior and ChatGPT worker execution are intentionally retained as COS Automation
 ownership; this project does not introduce a second full Codex Agent lifecycle.
-`coding-agent.ts` owns the worker bootstrap/report protocol text; the browser bridge only
-transports the resulting message and its receipts. The same boundary now owns the revival
-protocol suffix for an existing worker chat; the broker still owns inbox selection, worker
-state, durable acceptance and delivery timing.
+`agent-worker-protocol.ts` owns the ChatGPT worker bootstrap/report/revival protocol text as
+COS Automation code; the browser bridge only transports the resulting message and its
+receipts. The broker still owns inbox selection, worker state, durable acceptance and delivery
+timing. `CodexCodingTask` remains the explicit task contract consumed at that boundary.
 
 Remaining validation work:
 

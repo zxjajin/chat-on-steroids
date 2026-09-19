@@ -40,9 +40,10 @@ Project Files IPC 预览暂不接入空身份 contract，等待独立的 IPC cal
 
 ## Phase 3 - Agent Runtime Decoupling
 
-拆分 COS Automation Agent 的 MCP 注册/生命周期模块与 Coding Core；Coding Task、plan、
-文件/终端执行和 worker 协议 contract 已位于 Codex boundary。保留 Goal/Loop、Agent
-durable history 和 ChatGPT worker execution；本项目不引入完整 Codex Agent Runtime。
+拆分 COS Automation Agent 的 MCP 注册/生命周期模块与 Coding Core；Coding Task、plan 和
+文件/终端执行已位于 Codex boundary，ChatGPT worker protocol 明确保留在 COS Automation。
+保留 Goal/Loop、Agent durable history 和 ChatGPT worker execution；本项目不引入完整
+Codex Agent Runtime。
 
 ## Phase 4 - Duplicate Runtime Removal
 

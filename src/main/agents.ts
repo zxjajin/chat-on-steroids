@@ -29,7 +29,7 @@ import {
   renderCodexCodingTask,
   type CodexCodingTask
 } from './codex/coding-task.js';
-import { renderCodingWorkerRevival } from './codex/coding-agent.js';
+import { renderWorkerRevival } from './agent-worker-protocol.js';
 
 export const PRIME_ID = 'prime';
 
@@ -2724,7 +2724,7 @@ function planRevivalText(agent: Agent): { text: string; messageIds: string[] } {
     chars += message.text.length;
   }
   const body = waiting.map((message) => message.text).join('\n\n');
-  const text = renderCodingWorkerRevival(
+  const text = renderWorkerRevival(
     agent.info.id,
     body || 'The prime agent has more work for you; check your inbox on the next tool result.'
   );

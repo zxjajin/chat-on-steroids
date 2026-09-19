@@ -16,7 +16,7 @@ This document is the consolidated Phase 0 evidence index. The detailed source no
 | Session and timeline | `src/main/session/*`, `src/shared/session.ts` | durable history, chronology, attribution and tool truth |
 | ChatGPT input/browser | `src/main/bridge.ts`, `browser.ts`, `extension/*` | native browser actions, receipts, document/conversation identity |
 | Automation | `src/main/goal.ts`, `src/main/agents.ts`, `src/main/mcp/tools-agents.ts` | Goal/Loop, worker families, durable inboxes and browser bootstrap |
-| Coding execution | `src/main/codex/*`, `runtime-adapter.ts`, `coding-task.ts`, `coding-plan.ts`, `coding-agent.ts` | coding task/plan contracts, worker bootstrap protocol and bounded file/search/patch/image/process execution |
+| Coding execution | `src/main/codex/*`, `runtime-adapter.ts`, `coding-task.ts`, `coding-plan.ts` | coding task/plan contracts and bounded file/search/patch/image/process execution |
 | Renderer projection | `src/renderer/chat.ts`, agent panel and timeline modules | UI projection only; no new authority |
 
 ## Data Flow
@@ -62,8 +62,8 @@ The adapter does not import renderer, MCP, Goal or Agent orchestration.
 
 `tools-agents.ts` owns the MCP registration and request-scoped identity resolution for the
 Automation Agent. `agents.ts` owns worker topology, inboxes, durable acceptance, revival and
-finish state. `coding-agent.ts` owns the Coding Worker bootstrap/report/handoff protocol; `bridge.ts`
-owns browser command publication and receipts. Session History and
+finish state. `agent-worker-protocol.ts` owns the ChatGPT worker bootstrap/report/revival
+protocol as COS Automation; `bridge.ts` owns browser command publication and receipts. Session History and
 Timeline remain shared projections. `multiAgent.enabled` gates the live tool/UI surface; hiding
 the renderer does not delete or stop durable Agent state.
 

@@ -18,7 +18,7 @@ export { setBrowserWorkArea } from './browser-window-layout.js';
 import { pendingBrowserPreferenceRequest, acknowledgeBrowserPreferences } from './browser-preferences.js';
 import { sessionFinishHeld, releaseSessionFinish, getSessionFinishDraft, sessionFinishWaiting } from './session/finish.js';
 import { observeUsage } from './session/usage.js';
-import { renderCodingWorkerBootstrap } from './codex/coding-agent.js';
+import { renderWorkerBootstrap } from './agent-worker-protocol.js';
 import { pendingBrowserInputs, claimBrowserInput, acknowledgeBrowserInput, bindBrowserInputProject, failBrowserInput, completeBrowserDecision, listInputs, fileSilenceInput, fileRecoveryInput, advanceRecoveryInput, hasQueuedAfterTurnInput, inputBeforeGoal, pendingQueuedPickups, deferSilenceInput, revokeSilenceInputs } from './session/input.js';
 /**
  * The local bridge between the Chrome extension and this app.
@@ -8205,7 +8205,7 @@ function bootstrapText(spec: CommandSpec, summary: string): string {
     return revivalFor(spec.agent, spec.runId)?.text ?? '';
   }
   if (spec.type === 'worker') {
-    return renderCodingWorkerBootstrap(spec.agent, spec.task);
+    return renderWorkerBootstrap(spec.agent, spec.task);
   }
   return resumeBootstrapText(summary, spec.token);
 }

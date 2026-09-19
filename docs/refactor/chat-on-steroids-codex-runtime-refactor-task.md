@@ -502,7 +502,7 @@ Codex boundary 接管：
 - Coding Task contract
 - Coding plan contract
 - File/search/Patch/Terminal execution
-- Worker bootstrap/revival/handoff protocol text
+- `CodexCodingTask` consumed by the COS worker protocol
 
 
 保留：
@@ -523,9 +523,8 @@ Runtime 只接管可复用的 coding execution boundary 和协议 contract。
 - `src/main/mcp/tools-agents.ts` 独立承载 `agents` MCP tool 的 schema、caller 证据、worker 生命周期、durable acceptance 和消息投递。
 - `src/main/codex/coding-task.ts` 定义 `CodexCodingTask`；`agents action=spawn` 在进入 Automation broker 前组装结构化 Coding Task，旧 durable worker brief 仍按原格式渲染保存。
 - `src/main/codex/coding-plan.ts` 定义 Coding plan contract 与模型描述；`plan-tool.ts` 只保留 MCP registration、caller proof 和 COS Session projection。
-- `src/main/codex/coding-agent.ts` 接管 Coding Worker 的首条任务/报告协议文本；`bridge.ts` 只负责 browser command transport、claim 和 receipt。
-- `src/main/codex/coding-agent.ts` 也集中承载已存在 worker chat 的 revival 协议文本；`agents.ts` 只保留 inbox 选择、worker 状态转换、durable acceptance 和 revival 投递时机。
-- Coding Worker 的 finish handoff 规范也由 `coding-agent.ts` 提供；Automation broker 只负责精确 worker 归属、durable acceptance 和结果投递。
+- `src/main/agent-worker-protocol.ts` 集中承载 ChatGPT worker 的首条任务、revival 和 finish handoff 协议文本；这些是 COS Automation 协议，不属于 Codex execution module。
+- `bridge.ts` 只负责 browser command transport、claim 和 receipt；`agents.ts` 只保留 inbox 选择、worker 状态转换、durable acceptance 和 revival 投递时机。
 - `src/main/mcp/tools-core.ts` 仅保留 Agent tool 的注册调用；Coding Core 不再内嵌 Agent tool 的实现与身份协调依赖。
 - 没有改变 `AgentState`、worker 持久化、Timeline、Session History、Goal/Loop 或浏览器 bootstrap 行为。
 
@@ -535,7 +534,7 @@ Runtime 只接管可复用的 coding execution boundary 和协议 contract。
 - ChatGPT worker 的模型执行/报告/验证生命周期不会在本仓库内替换为第二个 Agent runtime；Codex contract 作为独立执行层边界保留。
 - Coding plan contract 已迁移；plan 的 durable session projection 仍由 COS 保持单一 owner。
 - Worker bootstrap 的协议文本已迁移；worker 的实际 ChatGPT 执行、结果 durable handoff 和验证仍由现有 Automation 路径负责。
-- `test/coding-agent-contract.test.ts` 已补充 Coding Task、legacy brief、worker bootstrap 和 handoff contract 的回归覆盖；按本次对话约束尚未执行。
+- `test/coding-agent-contract.test.ts` 已补充 Coding Task 与 COS worker protocol 的回归覆盖；按本次对话约束尚未执行。
 - 本次对话不编译、不运行测试；仅做静态依赖与补丁检查。
 
 
