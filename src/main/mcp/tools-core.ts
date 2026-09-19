@@ -21,7 +21,7 @@ import nodeFs from 'node:fs';
 import nodePath from 'node:path';
 import { z } from 'zod';
 import { DEFAULT_READ_BYTES, MAX_READ_BYTES, formatBytes } from '../fsops.js';
-import { BinaryReadError, listDirectoryLevel, readTextFile, statInfo, walkFiles } from '../codex/read-backend.js';
+import { BinaryReadError, listDirectoryLevel, statInfo, walkFiles } from '../codex/read-backend.js';
 import {
   VIEW_IMAGE_DESCRIPTION,
   VIEW_IMAGE_PATH_DESCRIPTION,
@@ -34,11 +34,10 @@ import { currentWorkspace } from '../workspace.js';
 import type { Capabilities, Root } from '../../shared/types.js';
 import type { FileChange } from '../../shared/session.js';
 import { REASONING_EFFORTS } from '../../shared/session.js';
-import { DEFAULT_EXCLUDES, MAX_CONTENT_FILE_BYTES, globToRegExp, search, searchOneFile } from '../search.js';
+import { DEFAULT_EXCLUDES, MAX_CONTENT_FILE_BYTES, globToRegExp } from '../search.js';
 import {
   ApplyPatchError,
   PatchParseError,
-  executeApplyPatch,
   parsePatch,
   verifyApplyPatchArgs,
   type AppliedPatchDelta,
@@ -50,6 +49,7 @@ import { maybeParseApplyPatchForExec } from '../codex/apply-patch/invocation.js'
 import { composeCommandBatch, parseCommandBatchSections } from '../codex/command-batch.js';
 import { formatExecOutputForModel, newStreamOutput } from '../codex/exec-output.js';
 import { DEFAULT_TRUNCATION_POLICY, EXEC_OUTPUT_CEILING_POLICY, unifiedExecManager } from '../codex/manager.js';
+import { codexRuntime, type CodexTaskContract } from '../codex/runtime-adapter.js';
 import {
   backgroundExecObligations,
   execOwnershipFailure,
@@ -242,6 +242,18 @@ function execPrincipal(): string | null {
   );
 }
 
+/** Constructs the COS-owned proof handed to the Codex execution boundary. */
+function codexTask(workspace: { real: string; virtual: string } | null): CodexTaskContract {
+  const caller = currentCaller();
+  return {
+    kind: 'coding',
+    requestId: caller.requestId,
+    sessionId: caller.sessionId ?? null,
+    conversationId: caller.conversationId,
+    workspace
+  };
+}
+
 export function registerCoreTools(reg: SurfaceRegistrar): void {
   const { ctx, caps, exposedCaps } = reg;
   // Named from the live roots, never from a `/project` that may not exist: a worked example the
@@ -379,6 +391,7 @@ export function registerCoreTools(reg: SurfaceRegistrar): void {
             try {
               const section = await readOne(target.path, {
                 roots: ctx.roots,
+                task: codexTask(currentWorkspace()),
                 canRead: caps.read,
                 canBrowse: caps.browse,
                 startLine: target.range ? target.range.start : start_line,
@@ -525,7 +538,7 @@ export function registerCoreTools(reg: SurfaceRegistrar): void {
             const resolved = await resolveIn(ctx.roots, p);
             const stat = await fs.stat(resolved.real);
             if (stat.isFile()) {
-              const outcome = await searchOneFile(resolved.real, resolved.virtual, {
+              const outcome = await codexRuntime.searchOneFile(codexTask(resolved), resolved.real, resolved.virtual, {
                 query,
                 mode: mode ?? 'name',
                 include,
@@ -566,7 +579,7 @@ export function registerCoreTools(reg: SurfaceRegistrar): void {
               break;
             }
             if (hits.length >= limit) break;
-            const outcome = await search({
+            const outcome = await codexRuntime.search(codexTask(scope), {
               realDir: scope.real,
               virtualDir: scope.virtual,
               query,
@@ -809,7 +822,7 @@ export function registerCoreTools(reg: SurfaceRegistrar): void {
             // id cannot briefly authorize its previous chat before this call publishes the new owner.
             forgetExecOwner(processId);
 
-            const output = await unifiedExecManager.execCommand({
+            const output = await codexRuntime.execCommand(codexTask(dir), {
               classifyExit: (exitCode, rawOutput) => {
                 if (!batch) return nonZeroExitIsBenign(boundCommand, exitCode, rawOutput);
                 const sections = parseCommandBatchSections(rawOutput, batch.marker);
@@ -1743,7 +1756,7 @@ async function runParsedPatch(
     }
   }
 
-  const execution = await executeApplyPatch({
+  const execution = await codexRuntime.applyPatch(codexTask(effectiveBase), {
     patch: effectiveArgs.patch,
     cwd: effectiveBase.real,
     updateFileMode: patchUpdateMode,
@@ -2037,6 +2050,7 @@ async function expandGlob(
 
 interface ReadOneOptions {
   roots: Parameters<typeof resolvePath>[0];
+  task: CodexTaskContract;
   canRead: boolean;
   canBrowse: boolean;
   startLine?: number;
@@ -2195,7 +2209,7 @@ async function readOne(
 
   let result;
   try {
-    result = await readTextFile(resolved.real, {
+    result = await codexRuntime.readTextFile(options.task, resolved.real, {
       startLine: options.startLine,
       endLine: options.endLine,
       maxBytes: options.maxBytes

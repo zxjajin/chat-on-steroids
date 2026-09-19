@@ -154,7 +154,7 @@ async function settleHistoryFrame(w: Pick<Window, 'requestAnimationFrame'>): Pro
   await settle();
 }
 
-async function boot(events: SessionEvent[], selectExisting = true, pausedHelpers: Array<{ id: string; sourceSessionId: string }> = [], projects: LocalProject[] = [], options: { origin?: SessionSummary["origin"]; developerMode?: boolean; sessions?: SessionSummary[]; pro?: boolean; reserveOpenings?: boolean; handoff?: Handoff | null } = {}) {
+async function boot(events: SessionEvent[], selectExisting = true, pausedHelpers: Array<{ id: string; sourceSessionId: string }> = [], projects: LocalProject[] = [], options: { origin?: SessionSummary["origin"]; developerMode?: boolean; multiAgentEnabled?: boolean; sessions?: SessionSummary[]; pro?: boolean; reserveOpenings?: boolean; handoff?: Handoff | null; plan?: unknown } = {}) {
   const html = await fs.readFile(path.join(process.cwd(), 'src', 'renderer', 'index.html'), 'utf8');
   dom = new JSDOM(html, { url: 'https://local.test/', pretendToBeVisual: true });
   const w = dom.window;
@@ -187,7 +187,7 @@ async function boot(events: SessionEvent[], selectExisting = true, pausedHelpers
     ui: { minimizeToTray: true, autoConnect: false, privacyScreenshots: false, theme: 'light', developerMode: options.developerMode ?? false },
     sessions: { record: true, retainDays: 30, advisoryTokens: 300000, limitTokens: 400000 },
     compaction: { auto: true, autoTokens: 300000 },
-    multiAgent: { enabled: false, maxWorkers: 2, allowUnattributedCalls: false, recoverAgentTabs: true },
+    multiAgent: { enabled: options.multiAgentEnabled ?? false, maxWorkers: 2, allowUnattributedCalls: false, recoverAgentTabs: true },
     goal: { enabled: false, model: 'deepseek/deepseek-v4-flash', reasoning: 'default' as const, prompt: DEFAULT_GOAL_SYSTEM_PROMPT }
   };
   const state = {
@@ -209,7 +209,7 @@ async function boot(events: SessionEvent[], selectExisting = true, pausedHelpers
     {
       getState: () => ok(state),
       getChatModels: () => ok({ state: 'ready', requestedAt: 1, observedAt: Date.now(), models: [{ id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', efforts: options.pro ? ['high', 'pro'] : ['none', 'high'] }] }),
-      getSessionControls: (id: string) => ok({ sessionId: id, conversationId: 'chat-a', automation: live.automation, activeTurnId: 'held-turn', finishHeld: live.finishHeld, blocked: '', job: live.compacting ? { busy: true } : null }),
+      getSessionControls: (id: string) => ok({ sessionId: id, conversationId: 'chat-a', automation: live.automation, activeTurnId: 'held-turn', finishHeld: live.finishHeld, blocked: '', job: live.compacting ? { busy: true } : null, ...(options.plan ? { plan: options.plan } : {}) }),
       releaseSessionFinish: (id: string, turn: string) => { live.controlCalls.push({ id, action: `release:${turn}` }); live.finishHeld = false; return ok({}); },
       setSessionAutomation: (id: string, action: string) => { live.controlCalls.push({ id, action }); live.automation = action; return ok({}); },
       compactSession: (id: string) => { live.controlCalls.push({ id, action: 'compact' }); live.compacting = true; return ok({}); },
@@ -2452,8 +2452,19 @@ it('keeps actual-turn Stop through two authored sends and stops only the capture
   expect(input.value).toBe('');
 });
 
+it('hides multi-agent projections while retaining the runtime state surface', async () => {
+  const { w } = await boot([], true, [], [], {
+    plan: { updatedAt: 2, plan: [{ step: 'Hidden plan', status: 'in_progress' }] }
+  });
+  expect(w.document.getElementById('agentPlan')!.hidden).toBe(true);
+  expect(w.document.getElementById('agentPlan')!.childElementCount).toBe(0);
+  expect(w.document.getElementById('swarmList')!.hidden).toBe(true);
+  expect(w.document.getElementById('swarmReset')!.hidden).toBe(true);
+  expect(w.document.getElementById('agentPanelToggle')!.hidden).toBe(true);
+});
+
 it('does not retarget an awaiting Stop after leaving and reselecting the same chat', async () => {
-  const { w } = await boot([]);
+  const { w } = await boot([], true, [], [], { multiAgentEnabled: true });
   const api = (w as any).api;
   const baseControls = api.getSessionControls;
   const original = async (id: string) => ({ ok: true, data: { ...(await baseControls(id)).data,

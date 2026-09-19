@@ -336,6 +336,44 @@ function unattributedBlocked(): boolean {
   return deps.state()?.config.multiAgent.allowUnattributedCalls === false;
 }
 
+/** Multi-agent is one renderer surface switch; runtime state remains authoritative elsewhere. */
+function multiAgentEnabled(): boolean {
+  return deps.state()?.config.multiAgent.enabled ?? false;
+}
+
+function clearAgentPlan(): void {
+  const host = document.getElementById('agentPlan');
+  if (!host) return;
+  host.hidden = true;
+  host.replaceChildren();
+  delete host.dataset.sessionId;
+  delete host.dataset.signature;
+}
+
+/** Hide only the multi-agent projections; swarm and session state stay alive for runtime use. */
+function paintMultiAgentSurface(): void {
+  const enabled = multiAgentEnabled();
+  const swarmList = document.getElementById('swarmList');
+  const swarmReset = document.getElementById('swarmReset') as HTMLButtonElement | null;
+  if (swarmList) swarmList.hidden = !enabled;
+  if (swarmReset) swarmReset.hidden = !enabled;
+  if (enabled) return;
+
+  agentPanel?.hide();
+  const agentToggle = document.getElementById('agentPanelToggle') as HTMLButtonElement | null;
+  if (agentToggle) {
+    agentToggle.hidden = true;
+    agentToggle.setAttribute('aria-expanded', 'false');
+  }
+  const agentFilterHost = document.getElementById('chatAgentFilter');
+  if (agentFilterHost) {
+    agentFilterHost.hidden = true;
+    agentFilterHost.replaceChildren();
+  }
+  agentFilter = null;
+  clearAgentPlan();
+}
+
 function sessionBadges(summary: SessionSummary): Badge[] {
   const badges: Badge[] = [];
   const origin = summary.origin;
@@ -349,37 +387,39 @@ function sessionBadges(summary: SessionSummary): Badge[] {
   // First, and in the failure tone: a blocked chat is the one state on this row that says the
   // app is actively refusing work, and the user came to the list to find it at a glance.
   if (blockedChats.has(summary.conversationId)) badges.push({ text: 'blocked', tone: 'is-failed' });
-  if (origin?.kind === 'worker') badges.push({ text: origin.agentId ?? 'worker', tone: '' });
-  else if (origin?.kind === 'resume') badges.push({ text: 'resumed', tone: '' });
-  else if (summary.agents.includes('prime')) badges.push({ text: 'prime', tone: '' });
+  if (origin?.kind === 'resume') badges.push({ text: 'resumed', tone: '' });
+  if (multiAgentEnabled()) {
+    if (origin?.kind === 'worker') badges.push({ text: origin.agentId ?? 'worker', tone: '' });
+    else if (summary.agents.includes('prime')) badges.push({ text: 'prime', tone: '' });
 
-  // Agent ids are reused across runs (`worker-1`, `worker-2`, ...). Matching only by that
-  // short id made old worker sessions inherit the *current* run's live badge, so a worker
-  // chat from 20 minutes ago suddenly said "active" again when a new worker-2 started.
-  // Conversation id is the durable identity of the actual ChatGPT tab, so only that exact
-  // worker session may borrow the live swarm state.
-  const agent = origin?.agentId
-    ? swarm?.agents.find(
-        (entry) =>
-          entry.id === origin.agentId &&
-          Boolean(entry.conversationId) &&
-          entry.conversationId === summary.conversationId
-      )
-    : swarm?.agents.find(
-        (entry) => entry.role === 'prime' && entry.conversationId === summary.conversationId
-      );
-  // Owning a run is not the same as running a turn. Exact chat activity wins; only an idle
-  // worker falls back to its broker lifecycle label.
-  // Exact recorded tool activity belongs to the session, not to the renderer's current swarm
-  // projection. A parked/restarted run can lose its AgentView while the chat still makes calls.
-  const workerStopped = agent?.role === 'worker' && ['sleeping', 'finished', 'failed'].includes(agent.state);
-  if (workerStopped) badges.push(AGENT_BADGE[agent.state]);
-  // The swarm no longer shows this worker — its run parked when it and its siblings stopped —
-  // but its own session records that its last call was the finish report. That is a worker
-  // between jobs, and "sleeping" is the word that says its chat can be woken.
-  else if (!agent && workerReportedFinish(summary)) badges.push(AGENT_BADGE.sleeping);
-  else if (sessionWorking(summary)) badges.push(AGENT_BADGE.active);
-  else if (agent && agent.role !== 'prime') badges.push(AGENT_BADGE[agent.state]);
+    // Agent ids are reused across runs (`worker-1`, `worker-2`, ...). Matching only by that
+    // short id made old worker sessions inherit the *current* run's live badge, so a worker
+    // chat from 20 minutes ago suddenly said "active" again when a new worker-2 started.
+    // Conversation id is the durable identity of the actual ChatGPT tab, so only that exact
+    // worker session may borrow the live swarm state.
+    const agent = origin?.agentId
+      ? swarm?.agents.find(
+          (entry) =>
+            entry.id === origin.agentId &&
+            Boolean(entry.conversationId) &&
+            entry.conversationId === summary.conversationId
+        )
+      : swarm?.agents.find(
+          (entry) => entry.role === 'prime' && entry.conversationId === summary.conversationId
+        );
+    // Owning a run is not the same as running a turn. Exact chat activity wins; only an idle
+    // worker falls back to its broker lifecycle label.
+    // Exact recorded tool activity belongs to the session, not to the renderer's current swarm
+    // projection. A parked/restarted run can lose its AgentView while the chat still makes calls.
+    const workerStopped = agent?.role === 'worker' && ['sleeping', 'finished', 'failed'].includes(agent.state);
+    if (workerStopped) badges.push(AGENT_BADGE[agent.state]);
+    // The swarm no longer shows this worker — its run parked when it and its siblings stopped —
+    // but its own session records that its last call was the finish report. That is a worker
+    // between jobs, and "sleeping" is the word that says its chat can be woken.
+    else if (!agent && workerReportedFinish(summary)) badges.push(AGENT_BADGE.sleeping);
+    else if (sessionWorking(summary)) badges.push(AGENT_BADGE.active);
+    else if (agent && agent.role !== 'prime') badges.push(AGENT_BADGE[agent.state]);
+  }
   return badges;
 }
 
@@ -754,7 +794,13 @@ function paintSessions(): void {
   chatList.replaceChildren(...rows);
   if (focusedProject) projectSections.find(section => section.dataset.projectId === focusedProject)
     ?.querySelector<HTMLElement>('.project-heading')?.focus({ preventScroll: true });
-  agentPanel?.update(selectedId, sessions.filter(entry => entry.origin?.kind === 'worker' && entry.origin.fromSessionId === selectedId && selectedId !== null));
+  if (multiAgentEnabled()) {
+    agentPanel?.update(selectedId, sessions.filter(entry => entry.origin?.kind === 'worker' && entry.origin.fromSessionId === selectedId && selectedId !== null));
+  } else {
+    agentPanel?.hide();
+    const agentToggle = document.getElementById('agentPanelToggle') as HTMLButtonElement | null;
+    if (agentToggle) agentToggle.hidden = true;
+  }
   filePanel?.update(selectedLocalProject());
   workspaceTerminal?.update(selectedLocalProject());
   badgeKey = badgeSignature();
@@ -1148,7 +1194,10 @@ function paintAutomationSwitch(): void {
 async function refreshSessionControls(): Promise<void> {
   const id = selectedId, generation = ++controlsGeneration;
   const planHost = $('agentPlan');
-  if (planHost.dataset.sessionId !== (id ?? '')) renderAgentPlan(planHost, id, null);
+  if (planHost.dataset.sessionId !== (id ?? '')) {
+    if (multiAgentEnabled()) renderAgentPlan(planHost, id, null);
+    else clearAgentPlan();
+  }
   const menu = $('sessionControls');
   if (controlledSessionId !== id || controlledSelection !== selectionGeneration) {
     // Retire the previous selection's projection before awaiting the new owner's IPC.
@@ -1180,7 +1229,8 @@ async function refreshSessionControls(): Promise<void> {
   }
   const controls = await run(api.getSessionControls(id));
   if (generation !== controlsGeneration || id !== selectedId) return;
-  renderAgentPlan(planHost, id, controls?.plan ?? null);
+  if (multiAgentEnabled()) renderAgentPlan(planHost, id, controls?.plan ?? null);
+  else clearAgentPlan();
   controlledSessionId = id;
   controlledSelection = selectionGeneration;
   controlledTurnId = controls?.activeTurnId ?? null;
@@ -1947,7 +1997,7 @@ function eventBody(event: SessionEvent, context?: { id: string; current: () => b
       box.addEventListener('toggle', () => { if (box.open) openTools.add(communicationKey); else openTools.delete(communicationKey); });
       box.append(summary);
       box.append(textBlock('msg', event.message.text, event.message.truncated, event.message.chars));
-      if (!context) {
+      if (!context && multiAgentEnabled()) {
         const matches = sessions.filter(entry => entry.origin?.kind === 'worker' && entry.origin.fromSessionId === selectedId && entry.origin.agentId === worker);
         if (matches.length === 1) {
           const open = el('button', 'btn agent-chat-open'); open.setAttribute('type', 'button');
@@ -2009,7 +2059,12 @@ function eventRow(event: SessionEvent): HTMLElement {
  */
 function paintAgentFilter(): void {
   const box = $('chatAgentFilter');
-  if (!deps.state()?.config.ui.developerMode) { box.hidden = true; agentFilter = null; return; }
+  if (!multiAgentEnabled() || !deps.state()?.config.ui.developerMode) {
+    box.hidden = true;
+    box.replaceChildren();
+    agentFilter = null;
+    return;
+  }
   const named = [...new Set(events.flatMap((event) => (event.agent ? [event.agent] : [])))].sort();
   const anyUnattributed = events.some((event) => !event.agent);
   // A filter belongs to the session it was chosen in. Carrying it across a selection
@@ -2734,6 +2789,8 @@ function stateLine(): { text: string; tone: '' | 'is-live' | 'is-bad'; working?:
     };
   }
 
+  if (!multiAgentEnabled()) return { text: '', tone: '' };
+
   const workers = swarm?.agents.filter((agent) => agent.role === 'worker') ?? [];
   if (workers.length === 0) return { text: '', tone: '' };
   const count = (state: AgentState): number => workers.filter((agent) => agent.state === state).length;
@@ -2784,6 +2841,7 @@ async function showExtensionPath(): Promise<void> {
 
 function paintSwarm(state: SwarmState): void {
   swarm = state;
+  paintMultiAgentSurface();
   paintStateLine();
   // Session rows borrow their live badge from the swarm, so a worker that just went to sleep
   // must not keep saying "active" until some unrelated session update repaints the list.
@@ -3279,6 +3337,7 @@ const CHAT_INPUTS = [
 /** Writes app state into this panel's controls. Called from the renderer's apply(). */
 export function chatApply(state: AppState, previous?: Config): void {
   const { config, bridge } = state;
+  paintMultiAgentSurface();
   if (visible && selectedId) void refreshSessionControls();
   paintContextMeter(sessions.find(session => session.id === selectedId) ?? null, config, confirmedComposerModel());
   applyChatModels(config, previous);

@@ -39,6 +39,11 @@ Add:
 - normalized errors
 - runtime status
 
+Implementation started in `src/main/codex/runtime-adapter.ts`: the MCP Core handler now passes
+an explicit `CodexTaskContract` to the existing Codex file/search/patch/terminal ports. COS still
+owns permission and caller proof; the adapter owns only the execution boundary. Remaining Core
+execution call sites and the later Agent cleanup stay in their planned phases.
+
 ## Phase 3
 
 Improve lifecycle handling:
