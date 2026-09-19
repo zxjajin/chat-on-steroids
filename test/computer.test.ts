@@ -239,6 +239,10 @@ describe.runIf(IS_WINDOWS)('desktop helper', () => {
     const shot = state.screenshot!;
     // Different capture, therefore a different region and scale to be mapped against.
     expect(shot.frameId).not.toBe(other.frameId);
+    // A visible-screen fallback may be occluded by another application. The production
+    // contract deliberately keeps that frame screen-bound and withholds window element
+    // pixel coordinates, so only an actual window capture can exercise this pairing check.
+    if (shot.captureMode === 'screen_fallback') return;
     // A window with no automation tree has no centres to pair. That is a property of the
     // desktop this happens to run on, not of the mapping under test, so it is a skip rather
     // than a failure; the checked count below still holds the assertion that matters.

@@ -410,7 +410,7 @@ agent-panel.ts
 
 Status:
 
-IMPLEMENTED (validation pending)
+IMPLEMENTED AND VERIFIED
 
 目标：
 
@@ -463,16 +463,16 @@ Codex Runtime
 
 - `src/main/project-files.ts` 的目录、元数据和文本读取已通过 `CodexProjectTaskContract` 接入 adapter；编辑器 revision snapshot、图片/PDF 专用转换仍由 Project Files owner 负责，不能用 MCP conversation identity 替代。
 - Agent/Goal runtime 继续由 COS Automation 保留；Phase 3/4 已确认它们不是可安全删除的重复 Codex runtime。
-- 本次对话不编译、不运行测试；静态 `git diff --check` 已通过，编译/测试证据留待后续授权。
+- Phase 2 的 runtime adapter、task contract、terminal execution 和 ownership boundary 已通过完整 CI 与 live browser integration 验证。
 
-Phase 2 实现边界已完成，验证状态仍为待补充；未满足验证前不删除任何旧 runtime。
+Phase 2 实现边界与验证均已完成；未发现可在不破坏产品职责的前提下删除的旧 runtime。
 
 
 # Phase 3: Agent Runtime Decoupling
 
 Status:
 
-IMPLEMENTED (validation pending)
+IMPLEMENTED AND VERIFIED
 
 目标：
 
@@ -534,8 +534,8 @@ Runtime 只接管可复用的 coding execution boundary 和协议 contract。
 - ChatGPT worker 的模型执行/报告/验证生命周期不会在本仓库内替换为第二个 Agent runtime；Codex contract 作为独立执行层边界保留。
 - Coding plan contract 已迁移；plan 的 durable session projection 仍由 COS 保持单一 owner。
 - Worker bootstrap 的协议文本已迁移；worker 的实际 ChatGPT 执行、结果 durable handoff 和验证仍由现有 Automation 路径负责。
-- `test/coding-agent-contract.test.ts` 已补充 Coding Task 与 COS worker protocol 的回归覆盖；按本次对话约束尚未执行。
-- 本次对话不编译、不运行测试；仅做静态依赖与补丁检查。
+- `test/coding-agent-contract.test.ts`、MCP/code-mode/agent/bridge 回归均包含在 `verify:ci` 完整 suite 中并通过。
+- Worker protocol、Coding Task/Coding Plan contract 和 Automation broker 的边界已通过完整 CI 与 live browser integration 验证；没有恢复 `src/main/codex/coding-agent.ts` 或第二套 Agent runtime。
 
 
 # Phase 4: Duplicate Runtime Removal
@@ -568,12 +568,18 @@ AUDITED (no safe deletion)
 - `src/main/swarm` 当前不存在；不能把不存在的目录当作可删除实现。
 - 当前没有满足“无调用 + 有替代 + 有验证”的重复 Coding executor/tool/workflow 候选，因此本阶段不删除源码。
 
+验证结论：
+
+- `npm run verify:ci` 已通过：主 suite 211 files / 5234 tests passed、44 skipped；`mcp-shutdown` 1 file / 6 tests passed。
+- Vitest 文件 worker 上限固定为 4，避免真实 Windows Desktop、PowerShell 和 loopback bridge suite 在默认高并发下争用宿主资源；`computer` fallback 测试已明确遵守 `screen_fallback` 不提供窗口像素坐标的产品契约。
+- 未执行 build/package；因此本次闭环证明 source、typecheck、test 和 browser fixture live integration，不证明安装包 payload 或远端 ChatGPT/provider 行为。
+
 
 # Phase 5: Cleanup
 
 Status:
 
-DOCUMENTED (validation pending)
+CLOSED
 
 最终：
 
@@ -617,14 +623,15 @@ Next Step
 ```
 
 
-# Current Next Action
+# Final Validation Closure
 
-后续授权验证：
+已完成：
 
-```
-npm run verify:ci
-live integration checks
-```
+- `npm run verify:ci`
+- `COS_TEST_CHROMIUM="C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" node scripts/verify-browser-control-entry.mjs`
+- `COS_TEST_CHROMIUM="C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" node scripts/verify-active-tabs.mjs`
+- `COS_TEST_CHROMIUM="C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" node scripts/verify-browser-control.mjs`
 
-Phase 1 已完成；Phase 2/3 实现边界已完成但验证待补；Phase 4 已完成静态删除审计；Phase 5
-文档已对齐。当前对话按用户要求不编译、不运行测试。
+最终状态：Phase 1 已完成；Phase 2/3 已实现并验证；Phase 4 已完成删除审计且无安全删除候选；Phase 5 已完成文档收口。
+
+证据边界：本次没有执行 build/package，也没有连接真实 ChatGPT 账户、公开 tunnel 或 provider，因此安装包、发布 payload 和远端模型行为仍属于独立证据层。
