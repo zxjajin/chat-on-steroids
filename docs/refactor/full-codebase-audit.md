@@ -96,7 +96,7 @@ using an empty or guessed MCP conversation identity.
 2. Codex Runtime Integration: implementation boundary complete; compile/test verification is
    pending because this conversation explicitly defers compilation and tests.
 3. Agent Runtime Decoupling: Agent tool extraction, `CodexCodingTask`, Coding plan contract and
-   worker bootstrap/handoff protocol are separated; worker execution/result verification still
+   worker bootstrap/revival/handoff protocol are separated; worker execution/result verification still
    needs a complete Codex replacement/execution contract.
 4. Duplicate Runtime Removal: audit complete with no safe deletion candidate; do not delete
    Automation or user data.

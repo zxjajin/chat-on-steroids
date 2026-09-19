@@ -57,7 +57,9 @@ module-boundary step only. `tools-agents.ts` now creates the Codex-owned `CodexC
 contract before entering the durable Agent broker. The durable Agent broker, worker bootstrap and
 Goal/Loop behavior are intentionally retained until a complete replacement contract exists.
 `coding-agent.ts` owns the worker bootstrap/report protocol text; the browser bridge only
-transports the resulting message and its receipts.
+transports the resulting message and its receipts. The same boundary now owns the revival
+protocol suffix for an existing worker chat; the broker still owns inbox selection, worker
+state, durable acceptance and delivery timing.
 
 Next lifecycle work:
 

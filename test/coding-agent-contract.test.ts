@@ -6,7 +6,8 @@ import {
 } from '../src/main/codex/coding-task.js';
 import {
   CODING_WORKER_FINISH_DESCRIPTION,
-  renderCodingWorkerBootstrap
+  renderCodingWorkerBootstrap,
+  renderCodingWorkerRevival
 } from '../src/main/codex/coding-agent.js';
 
 describe('Codex coding-agent contract', () => {
@@ -29,5 +30,14 @@ describe('Codex coding-agent contract', () => {
 
   it('keeps the handoff contract visible at the Codex boundary', () => {
     expect(CODING_WORKER_FINISH_DESCRIPTION).toContain('VALIDATION');
+  });
+
+  it('keeps revival protocol text at the Codex boundary', () => {
+    expect(renderCodingWorkerRevival('worker-3', 'Continue the parser work')).toContain(
+      'you are still worker-3 in the same run'
+    );
+    expect(renderCodingWorkerRevival('worker-3', 'Continue the parser work')).toContain(
+      'action=finish when this piece is done'
+    );
   });
 });

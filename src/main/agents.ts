@@ -29,6 +29,7 @@ import {
   renderCodexCodingTask,
   type CodexCodingTask
 } from './codex/coding-task.js';
+import { renderCodingWorkerRevival } from './codex/coding-agent.js';
 
 export const PRIME_ID = 'prime';
 
@@ -2723,11 +2724,10 @@ function planRevivalText(agent: Agent): { text: string; messageIds: string[] } {
     chars += message.text.length;
   }
   const body = waiting.map((message) => message.text).join('\n\n');
-  const text =
-    (body || 'The prime agent has more work for you; check your inbox on the next tool result.') +
-    `\n\n(Chat On Steroids: you are still ${agent.info.id} in the same run, and this is the prime agent talking to ` +
-    'you again in the chat you already know. Pick up from what you did here before rather than starting over. ' +
-    'Report with agents action=message to="prime" as you go and action=finish when this piece is done.)';
+  const text = renderCodingWorkerRevival(
+    agent.info.id,
+    body || 'The prime agent has more work for you; check your inbox on the next tool result.'
+  );
   return { text, messageIds: waiting.map((message) => message.id) };
 }
 

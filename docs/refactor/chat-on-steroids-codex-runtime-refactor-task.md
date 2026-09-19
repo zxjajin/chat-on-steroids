@@ -516,6 +516,7 @@ Codex Coding Agent
 - `src/main/codex/coding-task.ts` 定义 `CodexCodingTask`；`agents action=spawn` 在进入 Automation broker 前组装结构化 Coding Task，旧 durable worker brief 仍按原格式渲染保存。
 - `src/main/codex/coding-plan.ts` 定义 Coding plan contract 与模型描述；`plan-tool.ts` 只保留 MCP registration、caller proof 和 COS Session projection。
 - `src/main/codex/coding-agent.ts` 接管 Coding Worker 的首条任务/报告协议文本；`bridge.ts` 只负责 browser command transport、claim 和 receipt。
+- `src/main/codex/coding-agent.ts` 也集中承载已存在 worker chat 的 revival 协议文本；`agents.ts` 只保留 inbox 选择、worker 状态转换、durable acceptance 和 revival 投递时机。
 - Coding Worker 的 finish handoff 规范也由 `coding-agent.ts` 提供；Automation broker 只负责精确 worker 归属、durable acceptance 和结果投递。
 - `src/main/mcp/tools-core.ts` 仅保留 Agent tool 的注册调用；Coding Core 不再内嵌 Agent tool 的实现与身份协调依赖。
 - 没有改变 `AgentState`、worker 持久化、Timeline、Session History、Goal/Loop 或浏览器 bootstrap 行为。

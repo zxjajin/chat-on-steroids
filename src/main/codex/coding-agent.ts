@@ -9,6 +9,15 @@ export const CODING_WORKER_FINISH_DESCRIPTION = 'factual handoff under RESULT / 
 export const CODING_WORKER_FINISH_REQUIRED =
   'agents action=finish requires result: the report the prime reads in your place — what you changed, what you verified and what is left. Send it as result and call finish again.';
 
+/** Protocol suffix for a later assignment delivered to an existing worker chat. */
+export function renderCodingWorkerRevival(workerId: string, body: string): string {
+  return (
+    `${body}\n\n(Chat On Steroids: you are still ${workerId} in the same run, and this is the prime agent talking to ` +
+    'you again in the chat you already know. Pick up from what you did here before rather than starting over. ' +
+    'Report with agents action=message to="prime" as you go and action=finish when this piece is done.)'
+  );
+}
+
 /**
  * Builds the first message for a Coding Agent worker.
  *
