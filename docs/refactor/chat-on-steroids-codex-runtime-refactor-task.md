@@ -462,7 +462,7 @@ Codex Runtime
 当前未完成：
 
 - `src/main/project-files.ts` 的目录、元数据和文本读取已通过 `CodexProjectTaskContract` 接入 adapter；编辑器 revision snapshot、图片/PDF 专用转换仍由 Project Files owner 负责，不能用 MCP conversation identity 替代。
-- 尚未移除 Agent/Goal runtime；该工作属于 Phase 3/4。
+- Agent/Goal runtime 继续由 COS Automation 保留；Phase 3/4 已确认它们不是可安全删除的重复 Codex runtime。
 - 本次对话不编译、不运行测试；静态 `git diff --check` 已通过，编译/测试证据留待后续授权。
 
 Phase 2 实现边界已完成，验证状态仍为待补充；未满足验证前不删除任何旧 runtime。
@@ -518,7 +518,7 @@ Runtime 只接管可复用的 coding execution boundary 和协议 contract。
 
 ## Phase 3 Progress
 
-已完成第一步模块边界拆分：
+边界实现已完成，以下职责已经分离：
 
 - `src/main/mcp/tools-agents.ts` 独立承载 `agents` MCP tool 的 schema、caller 证据、worker 生命周期、durable acceptance 和消息投递。
 - `src/main/codex/coding-task.ts` 定义 `CodexCodingTask`；`agents action=spawn` 在进入 Automation broker 前组装结构化 Coding Task，旧 durable worker brief 仍按原格式渲染保存。
@@ -587,7 +587,7 @@ ChatGPT Productivity Platform
 Codex:
 
 ```
-Coding Agent Runtime
+Coding Agent Execution Layer
 ```
 
 
