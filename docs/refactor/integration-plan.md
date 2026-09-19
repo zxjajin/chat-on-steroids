@@ -52,8 +52,9 @@ proven caller/workspace contract.
 Agent boundary extraction is in progress. The Agent MCP registration and worker lifecycle
 coordination now live in `src/main/mcp/tools-agents.ts`; `tools-core.ts` keeps the coding tool
 surface and calls the Agent registration entry without embedding its implementation. This is a
-module-boundary step only: the durable Agent broker, worker bootstrap and Goal/Loop behavior are
-intentionally retained until a complete replacement contract exists.
+module-boundary step only. `tools-agents.ts` now creates the Codex-owned `CodexCodingTask`
+contract before entering the durable Agent broker. The durable Agent broker, worker bootstrap and
+Goal/Loop behavior are intentionally retained until a complete replacement contract exists.
 
 Next lifecycle work:
 

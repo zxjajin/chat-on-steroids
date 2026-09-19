@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { toolDeclaration } from './tool-declarations.js';
+import { createCodexCodingTask } from '../codex/coding-task.js';
 import { getConfig } from '../config.js';
 import { logWarn } from '../logger.js';
 import {
@@ -194,8 +195,11 @@ export function registerAgentsTool(reg: SurfaceRegistrar): void {
           // The request remains the reachable prime before browser attachment; later proof
           // changes its frontend projection without recreating workers or replaying spawn.
           const staged = stageSpawn({
-            workers: input.workers,
-            context: input.context ?? null,
+            workers: input.workers.map(worker => ({
+              ...worker,
+              task: createCodexCodingTask(worker.task, input.context ?? null)
+            })),
+            context: null,
             caller: await callerNow(startedAt, { exact: true, runId: input.run_id })
           });
           let accepted = false;

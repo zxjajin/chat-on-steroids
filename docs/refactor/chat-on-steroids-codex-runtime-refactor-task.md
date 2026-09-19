@@ -513,6 +513,7 @@ Codex Coding Agent
 已完成第一步模块边界拆分：
 
 - `src/main/mcp/tools-agents.ts` 独立承载 `agents` MCP tool 的 schema、caller 证据、worker 生命周期、durable acceptance 和消息投递。
+- `src/main/codex/coding-task.ts` 定义 `CodexCodingTask`；`agents action=spawn` 在进入 Automation broker 前组装结构化 Coding Task，旧 durable worker brief 仍按原格式渲染保存。
 - `src/main/mcp/tools-core.ts` 仅保留 Agent tool 的注册调用；Coding Core 不再内嵌 Agent tool 的实现与身份协调依赖。
 - 没有改变 `AgentState`、worker 持久化、Timeline、Session History、Goal/Loop 或浏览器 bootstrap 行为。
 
@@ -520,6 +521,7 @@ Codex Coding Agent
 
 - Agent broker 仍是 ChatGPT Automation 的运行时，尚未删除或替换。
 - Coding Planning / Worker Execution / Code Modification 尚未全部迁移为独立 Codex Coding Agent；必须先确定现有 worker bootstrap 与 Codex task contract 的完整替代关系。
+- 当前契约只完成 Coding Task 的入口结构化，尚未替换 ChatGPT worker 的执行/报告/验证生命周期。
 - 本次对话不编译、不运行测试；仅做静态依赖与补丁检查。
 
 

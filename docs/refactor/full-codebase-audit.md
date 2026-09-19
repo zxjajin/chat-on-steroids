@@ -16,7 +16,7 @@ This document is the consolidated Phase 0 evidence index. The detailed source no
 | Session and timeline | `src/main/session/*`, `src/shared/session.ts` | durable history, chronology, attribution and tool truth |
 | ChatGPT input/browser | `src/main/bridge.ts`, `browser.ts`, `extension/*` | native browser actions, receipts, document/conversation identity |
 | Automation | `src/main/goal.ts`, `src/main/agents.ts`, `src/main/mcp/tools-agents.ts` | Goal/Loop, worker families, durable inboxes and browser bootstrap |
-| Coding execution | `src/main/codex/*`, `src/main/codex/runtime-adapter.ts` | bounded file/search/patch/image/process execution |
+| Coding execution | `src/main/codex/*`, `runtime-adapter.ts`, `coding-task.ts` | coding task contract plus bounded file/search/patch/image/process execution |
 | Renderer projection | `src/renderer/chat.ts`, agent panel and timeline modules | UI projection only; no new authority |
 
 ## Data Flow
@@ -36,7 +36,7 @@ ChatGPT browser conversation
 Automation follows a separate path after caller proof:
 
 ```text
-agents MCP tool -> tools-agents.ts -> agents.ts durable broker
+agents MCP tool -> tools-agents.ts -> CodexCodingTask -> agents.ts durable broker
   -> bridge bootstrap/revival -> worker ChatGPT conversation
   -> same MCP proof and Codex execution boundary
 ```
@@ -93,8 +93,9 @@ connected using an empty or guessed identity.
 1. Capability Isolation: complete; renderer MultiAgent projections use the existing config gate.
 2. Codex Runtime Integration: implementation boundary complete; compile/test verification is
    pending because this conversation explicitly defers compilation and tests.
-3. Agent Runtime Decoupling: first module extraction complete; Coding Planning, Worker
-   Execution and Code Modification still need a complete Codex replacement contract.
+3. Agent Runtime Decoupling: Agent tool extraction and the `CodexCodingTask` entry contract are
+   complete; Coding Planning, Worker Execution and Code Modification still need a complete
+   Codex replacement/execution contract.
 4. Duplicate Runtime Removal: audit complete with no safe deletion candidate; do not delete
    Automation or user data.
 5. Cleanup: documentation is aligned; source cleanup waits for Phase 3/4 evidence.
