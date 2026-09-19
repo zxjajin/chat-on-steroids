@@ -622,7 +622,8 @@ Next Step
 后续授权验证：
 
 ```
-compile / tests / live integration checks
+npm run verify:ci
+live integration checks
 ```
 
 Phase 1 已完成；Phase 2/3 实现边界已完成但验证待补；Phase 4 已完成静态删除审计；Phase 5
