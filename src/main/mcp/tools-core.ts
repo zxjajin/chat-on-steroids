@@ -57,7 +57,7 @@ import {
   MAX_UNREAD_EXEC_RESULTS_PER_CONVERSATION,
   noteExecAttended,
   noteExecOwner
-} from '../codex/ownership.js';
+} from '../terminal-ownership.js';
 import {
   UnifiedExecError,
   applyUnifiedExecEnv,

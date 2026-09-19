@@ -13,10 +13,11 @@ This document is the consolidated Phase 0 evidence index. The detailed source no
 | Electron shell | `src/main/index.ts`, window/shutdown modules | single instance, startup, bounded shutdown |
 | Connection and MCP | `src/main/connection.ts`, `mcp/server.ts`, `mcp/surfaces.ts` | endpoint/tunnel generations and surface exposure |
 | Caller and permissions | `src/main/mcp/kernel.ts`, `config.ts`, `sandbox.ts`, `session/correlation.ts` | exact caller proof, live capabilities, approved-root containment |
+| Terminal custody | `src/main/terminal-ownership.ts`, `src/main/codex/manager.ts` | COS session/request process ownership and bounded terminal result publication |
 | Session and timeline | `src/main/session/*`, `src/shared/session.ts` | durable history, chronology, attribution and tool truth |
 | ChatGPT input/browser | `src/main/bridge.ts`, `browser.ts`, `extension/*` | native browser actions, receipts, document/conversation identity |
 | Automation | `src/main/goal.ts`, `src/main/agents.ts`, `src/main/mcp/tools-agents.ts` | Goal/Loop, worker families, durable inboxes and browser bootstrap |
-| Coding execution | `src/main/codex/*`, `runtime-adapter.ts`, `coding-task.ts`, `coding-plan.ts` | coding task/plan contracts and bounded file/search/patch/image/process execution |
+| Coding execution | `src/main/codex/*`, `runtime-adapter.ts`, `coding-task.ts`, `coding-plan.ts` | coding task/plan contracts and bounded file/search/patch/image/process execution; no caller custody |
 | Renderer projection | `src/renderer/chat.ts`, agent panel and timeline modules | UI projection only; no new authority |
 
 ## Data Flow

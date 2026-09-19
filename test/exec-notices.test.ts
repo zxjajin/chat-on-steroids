@@ -10,7 +10,7 @@ vi.mock('../src/main/codex/manager.js', () => ({ unifiedExecManager: {
 import {
   backgroundExecObligations, backgroundExecRecoveryNotices, forgetExecOwner, noteExecOwner, noteExecAttended,
   resetExecOwnershipForTests, UNATTENDED_EXEC_NOTICE_MS
-} from '../src/main/codex/ownership.js';
+} from '../src/main/terminal-ownership.js';
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1_000_000); processes.clear(); resetExecOwnershipForTests(); });
 afterEach(() => { vi.useRealTimers(); });
 function process(id = 10, exit: number | null = null, owner = 'session-a') {

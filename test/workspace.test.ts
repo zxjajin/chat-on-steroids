@@ -18,7 +18,7 @@ import {
   execOwnershipFailure,
   noteExecOwner,
   resetExecOwnershipForTests
-} from '../src/main/codex/ownership.js';
+} from '../src/main/terminal-ownership.js';
 import { observeRequestCorrelation, resetCorrelationRegistryForTests } from '../src/main/session/correlation.js';
 import { resetRequestPlansForTests } from '../src/main/session/request-plans.js';
 import { resolveIn } from '../src/main/mcp/kernel.js';

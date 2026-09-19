@@ -457,7 +457,7 @@ Codex Runtime
 - `src/main/codex/runtime-adapter.ts` 成为 MCP Core 文件读取、目录/元数据、图片、搜索、Patch 和 Terminal 执行的统一入口；Terminal 的进程分配、执行和 `write_stdin` 也使用同一入口。
 - Git workflow 与 verification 通过同一 `execCommand`/`writeStdin` terminal contract 和 Patch/diff 结果承载；不再新增一个平行的 Git 或验证 tool runtime。
 - Codex execution modules 不反向依赖 MCP、renderer、Goal 或 Agent orchestration。
-- 权限、路径 containment、process ownership、session recording 仍由 COS 原有 owner 执行。
+- 权限、路径 containment、process ownership（`src/main/terminal-ownership.ts`）、session recording 仍由 COS 原有 owner 执行。
 
 当前未完成：
 
