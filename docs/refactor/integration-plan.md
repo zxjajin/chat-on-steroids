@@ -48,7 +48,13 @@ proven caller/workspace contract.
 
 ## Phase 3
 
-Improve lifecycle handling:
+Agent boundary extraction is in progress. The Agent MCP registration and worker lifecycle
+coordination now live in `src/main/mcp/tools-agents.ts`; `tools-core.ts` keeps the coding tool
+surface and calls the Agent registration entry without embedding its implementation. This is a
+module-boundary step only: the durable Agent broker, worker bootstrap and Goal/Loop behavior are
+intentionally retained until a complete replacement contract exists.
+
+Next lifecycle work:
 
 - runtime startup
 - health check
