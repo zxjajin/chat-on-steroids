@@ -29,6 +29,13 @@ Want screen and keyboard control? Enable **Desktop** permissions and connect its
 
 Core, Desktop and Plugins are separate connectors. Configure each surface you enable. Release packages include the pinned, checksum-verified `tunnel-client`.
 
+If the machine uses a local proxy without TUN mode, CoS also reads only `HTTP_PROXY`, `HTTPS_PROXY`,
+`ALL_PROXY` and `NO_PROXY` from the app installation directory's `.env` when starting a tunnel
+(for example, `D:\apps\Chat On Steroids\.env`). In development it reads `.env` from the
+working directory. Those values are
+passed only to the tunnel process; other local commands and the renderer do not inherit them. Keep
+`127.0.0.1,localhost` in `NO_PROXY` so the tunnel's MCP loopback stays local.
+
 ### Other tunnels
 
 **Cloudflare quick tunnel:** connect in CoS and use the displayed public URL as the MCP server URL in ChatGPT. The random path is a secret and changes on restart.
