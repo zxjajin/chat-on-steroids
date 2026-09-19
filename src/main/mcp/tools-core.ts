@@ -21,12 +21,11 @@ import nodeFs from 'node:fs';
 import nodePath from 'node:path';
 import { z } from 'zod';
 import { DEFAULT_READ_BYTES, MAX_READ_BYTES, formatBytes } from '../fsops.js';
-import { BinaryReadError, listDirectoryLevel, statInfo, walkFiles } from '../codex/read-backend.js';
+import { BinaryReadError } from '../codex/read-backend.js';
 import {
   VIEW_IMAGE_DESCRIPTION,
   VIEW_IMAGE_PATH_DESCRIPTION,
-  ViewImageError,
-  viewImage
+  ViewImageError
 } from '../codex/view-image.js';
 import { logInfo, logWarn } from '../logger.js';
 import { SandboxError, isAbsoluteVirtualPath, isNativeWindowsPath, resolvePath, strayVirtualPath } from '../sandbox.js';
@@ -48,7 +47,7 @@ import { DEFAULT_APPLY_PATCH_FILE_UPDATE_MODE } from '../codex/apply-patch/mode.
 import { maybeParseApplyPatchForExec } from '../codex/apply-patch/invocation.js';
 import { composeCommandBatch, parseCommandBatchSections } from '../codex/command-batch.js';
 import { formatExecOutputForModel, newStreamOutput } from '../codex/exec-output.js';
-import { DEFAULT_TRUNCATION_POLICY, EXEC_OUTPUT_CEILING_POLICY, unifiedExecManager } from '../codex/manager.js';
+import { DEFAULT_TRUNCATION_POLICY, EXEC_OUTPUT_CEILING_POLICY } from '../codex/manager.js';
 import { codexRuntime, type CodexTaskContract } from '../codex/runtime-adapter.js';
 import {
   backgroundExecObligations,
@@ -463,7 +462,7 @@ export function registerCoreTools(reg: SurfaceRegistrar): void {
           }
           const resolved = await resolveIn(ctx.roots, path);
           try {
-            const image = await viewImage(resolved.real, null, undefined, resolved.virtual);
+            const image = await codexRuntime.viewImage(codexTask(resolved), resolved.real, null, undefined, resolved.virtual);
             logInfo(`tool view_image ${resolved.virtual} (${formatBytes(image.bytes)})`);
             return {
               content: [{ type: 'image' as const, data: image.base64, mimeType: image.mimeType }]
@@ -816,7 +815,7 @@ export function registerCoreTools(reg: SurfaceRegistrar): void {
               );
             }
 
-            const processId = unifiedExecManager.allocateProcessId();
+            const processId = codexRuntime.allocateProcessId(codexTask(dir));
             // Process ids are deliberately small/reusable, while chat ownership lives in a
             // separate registry. Clear any stale row at the allocation boundary so a recycled
             // id cannot briefly authorize its previous chat before this call publishes the new owner.
@@ -966,7 +965,7 @@ export function registerCoreTools(reg: SurfaceRegistrar): void {
           // sitting in one is attending its session rather than neglecting it.
           noteExecAttended(input.session_id);
           try {
-            const output = await unifiedExecManager.writeStdin({
+            const output = await codexRuntime.writeStdin(codexTask(null), {
               processId: input.session_id,
               input: input.chars ?? '',
               yieldTimeMs: input.yield_time_ms ?? DEFAULT_WRITE_STDIN_YIELD_TIME_MS,
@@ -2013,7 +2012,7 @@ async function expandGlob(
   if (!rest) return { matches: [normalised], truncated: null };
 
   const resolved = await resolveIn(roots, base);
-  const info = await statInfo(resolved.real, resolved.virtual, { scanContent: false });
+  const info = await codexRuntime.statInfo(codexTask(resolved), resolved.real, resolved.virtual, { scanContent: false });
   if (info.type !== 'directory') throw new SandboxError(`${resolved.virtual} is not a folder, so it cannot be globbed`);
 
   // `**` walks with Codex's bounded breadth-first walk; a single-level pattern needs one
@@ -2021,14 +2020,14 @@ async function expandGlob(
   let candidates: string[];
   let scanTruncated = false;
   if (rest.includes('**')) {
-    const walked = await walkFiles(resolved.real, resolved.virtual, {
+    const walked = await codexRuntime.walkFiles(codexTask(resolved), resolved.real, resolved.virtual, {
       maxEntries: GLOB_SCAN_LIMIT,
       exclude: DEFAULT_EXCLUDES
     });
     candidates = walked.files;
     scanTruncated = walked.truncated;
   } else {
-    const listed = await listDirectoryLevel(resolved.real, resolved.virtual, GLOB_SCAN_LIMIT, false);
+    const listed = await codexRuntime.listDirectoryLevel(codexTask(resolved), resolved.real, resolved.virtual, GLOB_SCAN_LIMIT, false);
     candidates = listed.entries.filter((entry) => entry.type === 'file').map((entry) => entry.virtualPath);
     scanTruncated = listed.truncated;
   }
@@ -2110,7 +2109,13 @@ async function nearestFolderListing(roots: Root[], requested: string, err: unkno
       return '';
     }
     try {
-      const { entries, truncated } = await listDirectoryLevel(resolved.real, resolved.virtual, MISSING_PATH_LISTING, false);
+      const { entries, truncated } = await codexRuntime.listDirectoryLevel(
+        codexTask(resolved),
+        resolved.real,
+        resolved.virtual,
+        MISSING_PATH_LISTING,
+        false
+      );
       const names = entries.map((entry) => `${entry.type === 'directory' ? 'd' : 'f'} ${entry.name}`);
       const more = truncated ? `, …` : '';
       return `\nThe nearest existing folder is ${resolved.virtual}${
@@ -2136,13 +2141,20 @@ async function readOne(
   options: ReadOneOptions
 ): Promise<{ text: string; bytes: number; image?: { data: string; mimeType: string } }> {
   const resolved = await resolveIn(options.roots, requested);
-  const info = await statInfo(resolved.real, resolved.virtual, { scanContent: !options.canRead });
+  const info = await codexRuntime.statInfo(codexTask(resolved), resolved.real, resolved.virtual, {
+    scanContent: !options.canRead
+  });
 
   if (info.type === 'directory') {
     if (!options.canBrowse) {
       return { text: `--- ${resolved.virtual} ---\nTOOL_DISABLED: listing folders needs the Browse folders permission.`, bytes: 0 };
     }
-    const { entries, truncated } = await listDirectoryLevel(resolved.real, resolved.virtual, MAX_DIR_ENTRIES);
+    const { entries, truncated } = await codexRuntime.listDirectoryLevel(
+      codexTask(resolved),
+      resolved.real,
+      resolved.virtual,
+      MAX_DIR_ENTRIES
+    );
     const prefixLength = resolved.virtual.length + 1;
     const body = entries
       .map((entry) => {
@@ -2183,7 +2195,7 @@ async function readOne(
     // must not fail solely because it is larger than the text budget. Still charge base64,
     // not just compressed file bytes, and refuse an exhausted image batch before decoding.
     if (options.imageBytes <= 0) throw new Error('Read image output cap reached; read remaining images in another call or use view_image.');
-    const image = await viewImage(resolved.real, null, undefined, resolved.virtual);
+    const image = await codexRuntime.viewImage(codexTask(resolved), resolved.real, null, undefined, resolved.virtual);
     logInfo(`tool read image ${resolved.virtual} (${formatBytes(image.bytes)})`);
     const text = `--- ${resolved.virtual} — ${formatBytes(image.bytes)} ${image.mimeType} ---`;
     if (image.base64.length > options.imageBytes) {

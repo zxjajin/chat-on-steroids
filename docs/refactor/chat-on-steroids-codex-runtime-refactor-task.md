@@ -452,15 +452,17 @@ Codex Runtime
 已建立第一段 Task Contract：
 
 - COS 在 MCP Core handler 中组装 request、session、conversation 和 workspace 证据。
-- `src/main/codex/runtime-adapter.ts` 成为文件读取、搜索、Patch 和 Terminal 执行的统一入口。
+- `src/main/codex/runtime-adapter.ts` 成为 MCP Core 文件读取、目录/元数据、图片、搜索、Patch 和 Terminal 执行的统一入口；Terminal 的进程分配、执行和 `write_stdin` 也使用同一入口。
 - Codex execution modules 不反向依赖 MCP、renderer、Goal 或 Agent orchestration。
 - 权限、路径 containment、process ownership、session recording 仍由 COS 原有 owner 执行。
 
 当前未完成：
 
-- 其余 Codex execution call sites 尚未全部迁移到 adapter。
+- `src/main/project-files.ts` 仍保留面向 Project Files UI 的专用预览链路；它不是 MCP Core 的模型执行入口，后续需单独补充 IPC caller/workspace contract 后再迁移，不能用空身份临时接入。
 - 尚未移除 Agent/Goal runtime；该工作属于 Phase 3/4。
-- 本阶段验证需在用户允许执行检查后完成。
+- 本次对话不编译、不运行测试；静态 `git diff --check` 已通过，编译/测试证据留待后续授权。
+
+Phase 2 实现边界已完成，验证状态仍为待补充；未满足验证前不删除任何旧 runtime。
 
 
 # Phase 3: Agent Runtime Decoupling

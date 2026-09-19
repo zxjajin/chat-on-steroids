@@ -39,10 +39,12 @@ Add:
 - normalized errors
 - runtime status
 
-Implementation started in `src/main/codex/runtime-adapter.ts`: the MCP Core handler now passes
-an explicit `CodexTaskContract` to the existing Codex file/search/patch/terminal ports. COS still
-owns permission and caller proof; the adapter owns only the execution boundary. Remaining Core
-execution call sites and the later Agent cleanup stay in their planned phases.
+Implemented in `src/main/codex/runtime-adapter.ts`: the MCP Core handler passes an explicit
+`CodexTaskContract` to the existing Codex file, directory, image, search, patch and terminal
+ports. Process-id allocation, `exec_command` and `write_stdin` share that same boundary. COS
+still owns permission, caller proof, process ownership and recording; the adapter owns only the
+execution boundary. The Project Files IPC preview path remains separate until it has its own
+proven caller/workspace contract.
 
 ## Phase 3
 
