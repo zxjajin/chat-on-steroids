@@ -13,7 +13,8 @@ Evolve Chat On Steroids into a stable ChatGPT local code bridge.
 
 ## Phase 0
 
-Completed by this document set:
+Completed by this document set and consolidated in
+`docs/refactor/full-codebase-audit.md`:
 
 - current architecture analysis
 - Codex runtime analysis
