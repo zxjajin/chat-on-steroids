@@ -47,6 +47,12 @@ src/main/swarm
 - 重复的 Coding tool runtime
 - 重复的 Repository workflow
 
+当前边界清理记录：
+
+- `src/main/terminal-ownership.ts` 是 COS 的唯一 Terminal custody owner。
+- `src/main/codex/ownership.ts` 仅为旧内部路径的 re-export，不包含 registry 或业务逻辑；在
+  compile/test 验证完成并确认没有外部引用前，不删除该兼容出口。
+
 ## 不删除
 
 必须保留：
