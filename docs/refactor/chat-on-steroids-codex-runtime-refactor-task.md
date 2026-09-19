@@ -515,6 +515,7 @@ Codex Coding Agent
 - `src/main/mcp/tools-agents.ts` 独立承载 `agents` MCP tool 的 schema、caller 证据、worker 生命周期、durable acceptance 和消息投递。
 - `src/main/codex/coding-task.ts` 定义 `CodexCodingTask`；`agents action=spawn` 在进入 Automation broker 前组装结构化 Coding Task，旧 durable worker brief 仍按原格式渲染保存。
 - `src/main/codex/coding-agent.ts` 接管 Coding Worker 的首条任务/报告协议文本；`bridge.ts` 只负责 browser command transport、claim 和 receipt。
+- Coding Worker 的 finish handoff 规范也由 `coding-agent.ts` 提供；Automation broker 只负责精确 worker 归属、durable acceptance 和结果投递。
 - `src/main/mcp/tools-core.ts` 仅保留 Agent tool 的注册调用；Coding Core 不再内嵌 Agent tool 的实现与身份协调依赖。
 - 没有改变 `AgentState`、worker 持久化、Timeline、Session History、Goal/Loop 或浏览器 bootstrap 行为。
 

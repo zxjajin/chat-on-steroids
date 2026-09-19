@@ -62,7 +62,7 @@ The adapter does not import renderer, MCP, Goal or Agent orchestration.
 
 `tools-agents.ts` owns the MCP registration and request-scoped identity resolution for the
 Automation Agent. `agents.ts` owns worker topology, inboxes, durable acceptance, revival and
-finish state. `coding-agent.ts` owns the Coding Worker bootstrap/report protocol; `bridge.ts`
+finish state. `coding-agent.ts` owns the Coding Worker bootstrap/report/handoff protocol; `bridge.ts`
 owns browser command publication and receipts. Session History and
 Timeline remain shared projections. `multiAgent.enabled` gates the live tool/UI surface; hiding
 the renderer does not delete or stop durable Agent state.

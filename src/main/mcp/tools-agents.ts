@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { toolDeclaration } from './tool-declarations.js';
 import { createCodexCodingTask } from '../codex/coding-task.js';
+import { CODING_WORKER_FINISH_DESCRIPTION, CODING_WORKER_FINISH_REQUIRED } from '../codex/coding-agent.js';
 import { getConfig } from '../config.js';
 import { logWarn } from '../logger.js';
 import {
@@ -158,7 +159,7 @@ export function registerAgentsTool(reg: SurfaceRegistrar): void {
           .max(4000)
           .optional()
           .describe(
-            'finish: factual handoff under RESULT / CHANGES / VALIDATION / BLOCKERS.'
+            `finish: ${CODING_WORKER_FINISH_DESCRIPTION}`
           )
       })
       .superRefine((input, ctx) => {
@@ -327,9 +328,7 @@ export function registerAgentsTool(reg: SurfaceRegistrar): void {
 
         if (input.action === 'finish') {
           if (!input.result) {
-            return fail(
-              'agents action=finish requires result: the report the prime reads in your place — what you changed, what you verified and what is left. Send it as result and call finish again.'
-            );
+            return fail(CODING_WORKER_FINISH_REQUIRED);
           }
           const staged = stageFinishAgent(await callerNow(startedAt, { runId: input.run_id, member: true }), input.result);
           let accepted = staged.repeat;

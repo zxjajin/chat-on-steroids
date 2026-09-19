@@ -3,6 +3,12 @@ import {
   type CodexCodingTaskInput
 } from './coding-task.js';
 
+/** User/model-facing handoff contract; the Automation broker only persists the result. */
+export const CODING_WORKER_FINISH_DESCRIPTION = 'factual handoff under RESULT / CHANGES / VALIDATION / BLOCKERS.';
+
+export const CODING_WORKER_FINISH_REQUIRED =
+  'agents action=finish requires result: the report the prime reads in your place — what you changed, what you verified and what is left. Send it as result and call finish again.';
+
 /**
  * Builds the first message for a Coding Agent worker.
  *
