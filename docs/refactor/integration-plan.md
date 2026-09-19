@@ -38,7 +38,8 @@ Add:
 - workspace permission model
 - audit information
 - normalized errors
-- runtime status
+- runtime status remains the COS connection/diagnostics responsibility; the adapter does not
+  publish synthetic health for an in-process execution port
 
 Implemented in `src/main/codex/runtime-adapter.ts`: the MCP Core handler passes an explicit
 `CodexTaskContract` to the existing Codex file, directory, image, search, patch and terminal
@@ -55,18 +56,18 @@ coordination now live in `src/main/mcp/tools-agents.ts`; `tools-core.ts` keeps t
 surface and calls the Agent registration entry without embedding its implementation. This is a
 module-boundary step only. `tools-agents.ts` now creates the Codex-owned `CodexCodingTask`
 contract before entering the durable Agent broker. The durable Agent broker, worker bootstrap and
-Goal/Loop behavior are intentionally retained until a complete replacement contract exists.
+Goal/Loop behavior and ChatGPT worker execution are intentionally retained as COS Automation
+ownership; this project does not introduce a second full Codex Agent lifecycle.
 `coding-agent.ts` owns the worker bootstrap/report protocol text; the browser bridge only
 transports the resulting message and its receipts. The same boundary now owns the revival
 protocol suffix for an existing worker chat; the broker still owns inbox selection, worker
 state, durable acceptance and delivery timing.
 
-Next lifecycle work:
+Remaining validation work:
 
-- runtime startup
-- health check
-- recovery
-- shutdown
+- compile/typecheck
+- focused regression tests
+- live integration checks when authorized
 
 ## Final Architecture
 

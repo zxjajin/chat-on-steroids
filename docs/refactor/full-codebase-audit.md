@@ -96,8 +96,9 @@ using an empty or guessed MCP conversation identity.
 2. Codex Runtime Integration: implementation boundary complete; compile/test verification is
    pending because this conversation explicitly defers compilation and tests.
 3. Agent Runtime Decoupling: Agent tool extraction, `CodexCodingTask`, Coding plan contract and
-   worker bootstrap/revival/handoff protocol are separated; worker execution/result verification still
-   needs a complete Codex replacement/execution contract.
+   worker bootstrap/revival/handoff protocol are separated. ChatGPT worker execution/result
+   handoff remains intentional COS Automation ownership; this repository does not add a second
+   full Codex Agent lifecycle.
 4. Duplicate Runtime Removal: audit complete with no safe deletion candidate; do not delete
    Automation or user data.
 5. Cleanup: documentation is aligned; source cleanup waits for Phase 3/4 evidence.

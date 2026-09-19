@@ -471,18 +471,18 @@ Phase 2 实现边界已完成，验证状态仍为待补充；未满足验证前
 
 Status:
 
-IN_PROGRESS
+IMPLEMENTED (validation pending)
 
 目标：
 
-拆分：
+拆分 Coding Core 与 COS Automation：
 
 ```
 COS Agent
 
 +
 
-Coding Agent
+Coding Execution
 ```
 
 改为：
@@ -492,21 +492,28 @@ COS Automation Agent
 
 +
 
-Codex Coding Agent
+Codex Coding Execution Layer
 ```
 
 
-迁移：
+Codex boundary 接管：
 
-- Coding Planning
-- Worker Execution
-- Code Modification
+- Coding Task contract
+- Coding plan contract
+- File/search/Patch/Terminal execution
+- Worker bootstrap/revival/handoff protocol text
 
 
 保留：
 
 - Timeline
 - History
+- Worker/Swarm lifecycle
+- Goal/Loop Automation
+
+本阶段不引入完整 Codex Agent Runtime。ChatGPT worker 的模型执行、worker durable
+history、消息路由、Goal/Loop 和 Timeline 继续由 COS Automation owner 负责；Codex
+Runtime 只接管可复用的 coding execution boundary 和协议 contract。
 
 ## Phase 3 Progress
 
@@ -521,11 +528,10 @@ Codex Coding Agent
 - `src/main/mcp/tools-core.ts` 仅保留 Agent tool 的注册调用；Coding Core 不再内嵌 Agent tool 的实现与身份协调依赖。
 - 没有改变 `AgentState`、worker 持久化、Timeline、Session History、Goal/Loop 或浏览器 bootstrap 行为。
 
-当前未完成：
+边界保留项与验证：
 
-- Agent broker 仍是 ChatGPT Automation 的运行时，尚未删除或替换。
-- Coding Planning / Worker Execution / Code Modification 尚未全部迁移为独立 Codex Coding Agent；必须先确定现有 worker bootstrap 与 Codex task contract 的完整替代关系。
-- 当前契约只完成 Coding Task 的入口结构化，尚未替换 ChatGPT worker 的执行/报告/验证生命周期。
+- Agent broker 仍是 ChatGPT Automation 的运行时；这是最终架构的保留项，不是待删除的重复 Codex runtime。
+- ChatGPT worker 的模型执行/报告/验证生命周期不会在本仓库内替换为第二个 Agent runtime；Codex contract 作为独立执行层边界保留。
 - Coding plan contract 已迁移；plan 的 durable session projection 仍由 COS 保持单一 owner。
 - Worker bootstrap 的协议文本已迁移；worker 的实际 ChatGPT 执行、结果 durable handoff 和验证仍由现有 Automation 路径负责。
 - `test/coding-agent-contract.test.ts` 已补充 Coding Task、legacy brief、worker bootstrap 和 handoff contract 的回归覆盖；按本次对话约束尚未执行。
@@ -536,7 +542,7 @@ Codex Coding Agent
 
 Status:
 
-NOT_STARTED
+AUDITED (no safe deletion)
 
 删除候选：
 
@@ -567,7 +573,7 @@ NOT_STARTED
 
 Status:
 
-IN_PROGRESS
+DOCUMENTED (validation pending)
 
 最终：
 
@@ -613,10 +619,11 @@ Next Step
 
 # Current Next Action
 
-继续执行：
+后续授权验证：
 
 ```
-Phase 3: Agent Runtime Decoupling
+compile / tests / live integration checks
 ```
 
-Phase 1 已完成；Phase 2 实现已完成但验证待补；Phase 3 正在进行。
+Phase 1 已完成；Phase 2/3 实现边界已完成但验证待补；Phase 4 已完成静态删除审计；Phase 5
+文档已对齐。当前对话按用户要求不编译、不运行测试。
