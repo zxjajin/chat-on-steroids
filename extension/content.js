@@ -2859,7 +2859,7 @@
     });
   }
 
-  const TURN_SECTION = 'section[data-testid^="conversation-turn"]';
+  const TURN_SECTION = 'section[data-testid^="conversation-turn"], [data-app-shell-main-surface] [data-thread-find-target="conversation"] [data-turn-key]';
   let seededPath = null;
 
   /**
@@ -10772,7 +10772,12 @@
       // Settings/plan dialogs retain the editor behind aria-hidden/inert. Claiming
       // that editor turns ordinary page unavailability into a false model failure.
       // Keep the input queued until this same document exposes its composer again.
-      const composer = await waitPageView(() => (message.directTurn || !CLF_DOM.generating()) && CLF_DOM.composerVisible() && CLF_DOM.composer(),
+      const composer = await waitPageView(() => {
+        const box = CLF_DOM.composer();
+        if (!box || !(message.directTurn || !CLF_DOM.generating()) || !CLF_DOM.composerWritable()) return null;
+        if (message.directTurn && !CLF_DOM.composerVisible()) return null;
+        return box;
+      },
         () => onTarget() && (message.directTurn || silencePickup || !generating) && pendingTools === 0, 15000);
       if (!composer && onTarget() && CLF_DOM.generating() && await confirmedProviderTerminal() && onTarget() && CLF_DOM.generating()) {
         // Only after readiness expires, re-prove the exact terminal: a Retry or
@@ -10782,6 +10787,10 @@
         return false; // No claim, insertion or Send: queued input survives recovery.
       }
       if (!composer || !onTarget() || (!message.directTurn && ((!silencePickup && generating) || CLF_DOM.generating())) || !CLF_DOM.composerVisible()) return false;
+      // A direct interruption must not stop the provider's current answer if the user
+      // has an independent draft in the native composer. Check before claiming the app
+      // input and before clicking Stop; after-turn pickups retain their own boundary.
+      if (message.directTurn && (composer.textContent || '').trim()) return false;
       const reply = await ask({ type: 'desktop_input', id: message.id, conversationId: target, requiresAuthorization: true });
       const input = reply?.data?.input;
       if (input?.silenceBoundary || input?.completedTurnId) { claimedSilence = input; sourceQuiet = true; }
@@ -10791,7 +10800,8 @@
       // This exact claimed bootstrap owns replacement text; existing chats and
       // attachment drafts remain protected. Re-evaluate after model selection,
       // since React can hydrate that autosaved text while the picker is open.
-      if ((!ownsFreshPage() && (composer.textContent || '').trim()) || CLF_DOM.hasComposerAttachments()) return fail('ChatGPT already contains an unsent draft. Send or clear that draft in Chrome before trying again.');
+      const ownResidue = sendText(composer.textContent) === sendText(input.text);
+      if ((!ownsFreshPage() && (composer.textContent || '').trim() && !ownResidue) || CLF_DOM.hasComposerAttachments()) return fail('ChatGPT already contains an unsent draft. Send or clear that draft in Chrome before trying again.');
       if (message.directTurn) {
         // The offer only wakes this document. The just-committed outbox claim
         // authorizes interrupting this exact tool-free turn, like handoff's Stop
@@ -10818,7 +10828,9 @@
       const limitation = providerLimitation();
       if (limitation) return fail(limitation);
       if (!(await CLF_DOM.selectModelSettings(input.model, input.reasoningEffort, onTarget))) return fail(providerLimitation() || 'Requested model or reasoning could not be confirmed');
-      if (!onTarget() || CLF_DOM.generating() || (!ownsFreshPage() && (CLF_DOM.composer()?.textContent || '').trim()) || CLF_DOM.hasComposerAttachments()) return fail('The ChatGPT composer changed before sending');
+      const currentDraft = sendText(CLF_DOM.composer()?.textContent);
+      if (!onTarget() || CLF_DOM.generating() || !CLF_DOM.composerWritable() ||
+          (!ownsFreshPage() && currentDraft && currentDraft !== sendText(input.text)) || CLF_DOM.hasComposerAttachments()) return fail('The ChatGPT composer changed before sending');
       if (!CLF_DOM.insertPrompt(input.text, ownsFreshPage())) return fail('ChatGPT did not accept the text');
       const sendingTarget = submittedSendLifetime(target, forEpoch);
       draft = CLF_DOM.captureComposerDraft(input.text, () => sendAttempted ? sendingTarget() : onTarget());
@@ -10860,12 +10872,12 @@
       }, (user, conversation) => {
         if ((!conversation && !temporary) || (target && !onTarget())) return false;
         const users = CLF_DOM.messages().filter(row => row.role === 'user');
-        if ((!target && users.length !== 1) || users.at(-1)?.id !== user.id || user.id === previousUserId || !matchesSubmittedUser(user, submittedText)) return false;
+        if ((!target && users.length !== 1) || users.at(-1)?.id !== user.id || user.id === previousUserId || !matchesSubmittedBootstrap(user, submittedText)) return false;
         // Freeze only identity while native Send still holds the proven row. React
         // may replace it before this async operation resumes; do not rediscover it.
         receipt = { conversation, user: { id: user.id } };
         return true;
-      }))) return false;
+      }, matchesSubmittedBootstrap))) return false;
       if (!receipt || !sendingTarget()) return false;
       // Native Send listeners refresh the receipt; pin only that witnessed object.
       const witnessedSendReceipt = userSendReceipt;

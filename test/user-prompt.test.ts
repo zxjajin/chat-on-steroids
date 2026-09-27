@@ -33,6 +33,20 @@ it('preserves the entire Unicode prompt and literal boundary-like user text acro
   } finally { page.window.close(); }
 });
 
+it('reads a Markdown-escaped provider copy of the bootstrap frame without changing literal authored backslashes', () => {
+  const page = new JSDOM('', { runScripts: 'outside-only' });
+  try {
+    page.window.eval(readFileSync('extension/chatgpt-dom.js', 'utf8'));
+    const api = (page.window as any).CLF_DOM;
+    const authored = 'Keep C:\\work\\[literal] and punctuation: exactly.';
+    const sent = prependUserPrompt(authored, 'Full guidance.\nSecond line.');
+    const escaped = sent.replace(/([!-/:-@[-`{-~])/g, '\\$1').replace(/\n/g, '\\\n');
+    expect(userPromptText(escaped)).toBe(authored);
+    expect(api.userPromptText(escaped)).toBe(authored);
+    expect(userPromptText(sent)).toBe(authored);
+  } finally { page.window.close(); }
+});
+
 it('hides only the framed prefix while preserving native message bytes and controls through repaint', () => {
   const page = new JSDOM('<section data-testid="conversation-turn-0"><div data-message-id="user-1" data-message-author-role="user"><div class="whitespace-pre-wrap"></div><button>Copy</button></div></section>', { runScripts: 'outside-only' });
   try {

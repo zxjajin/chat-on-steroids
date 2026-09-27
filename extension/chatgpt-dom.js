@@ -23,7 +23,10 @@
  */
 
 var CLF_DOM = (() => {
-  const TURN = 'section[data-testid^="conversation-turn"]';
+  const SHELL_TURN = '[data-app-shell-main-surface] [data-thread-find-target="conversation"] [data-turn-key]';
+  const SHELL_UNIT = '[data-content-search-unit-key]';
+  const TURN = `section[data-testid^="conversation-turn"], ${SHELL_TURN}`;
+  const PICKER = '[data-testid="composer-intelligence-picker-content"], [data-model-picker-view]';
   // ChatGPT has used both shapes in the live renderer: the older tool-message span
   // and, as of 2026-08-15, a display-contents row wrapping the visible tool label.
   // Keep both explicit structural anchors; hashed CSS-module names remain off limits.
@@ -35,7 +38,8 @@ var CLF_DOM = (() => {
   const STOP =
     'button[data-testid="stop-button"], button[data-testid="composer-stop-button"], ' +
     'button[aria-label="Stop streaming"], button[aria-label="Stop generating"], button[aria-label="Stop answering"]';
-  const SEND = 'button[data-testid="send-button"], form button[aria-label^="Send" i]';
+  const SEND = 'button[data-testid="send-button"], form button[aria-label^="Send" i], form[data-chatgpt-composer] button[type="submit"]';
+  const STOP_SQUARE = /^\s*M4\.5 5\.75/;
   /** The composer's own trailing controls, where the send and dictation buttons live. */
   const TRAILING =
     '[data-testid="composer-trailing-actions"], [data-testid="composer-footer-actions"], ' +
@@ -58,14 +62,23 @@ var CLF_DOM = (() => {
 
   // Wire framing matches shared/user-prompt.ts; neither reader changes provider text.
   const promptContinuation = value => /^\[\[CLF-(?:HANDOFF|RESUME):[A-Za-z0-9_-]{16,64}\]\]\n\n/.exec(value)?.[0] ?? '';
-  function userPromptText(value) {
-    value = value.replace(/\r\n?/g, '\n');
+  function readPromptFrame(value) {
     const identity = promptContinuation(value);
     const header = /^\[\[COS_CONTEXT:(\d{1,6})\]\]\n/.exec(value.slice(identity.length));
     if (!header) return null;
     const end = identity.length + header[0].length + Number(header[1]);
     const boundary = '\n[[/COS_CONTEXT]]\n\n';
     return value.startsWith(boundary, end) ? identity + value.slice(end + boundary.length) : null;
+  }
+  function asTypedPrompt(value) {
+    return value.replace(/\\\n/g, '\n').replace(/\\([!-/:-@[-`{-~])/g, '$1');
+  }
+  function userPromptText(value) {
+    value = value.replace(/\r\n?/g, '\n');
+    const exact = readPromptFrame(value);
+    if (exact !== null) return exact;
+    const typed = asTypedPrompt(value);
+    return typed === value ? null : readPromptFrame(typed);
   }
   function presentUserPrompts(readUserText) {
     return safe(() => {
@@ -386,6 +399,10 @@ var CLF_DOM = (() => {
     'data-message-author-role',
     'data-turn',
     'data-turn-id',
+    'data-turn-key',
+    'data-content-search-unit-key',
+    'data-clf-shell-owner',
+    'data-clf-shell-message',
     'data-testid',
     'aria-label'
   ];
@@ -396,6 +413,7 @@ var CLF_DOM = (() => {
     const element = target.nodeType === 1 ? target : target.parentElement;
     const section = element && typeof element.closest === 'function' ? element.closest(TURN) : null;
     if (section) sectionCache.delete(section);
+    if (element?.matches?.(SHELL_UNIT)) sectionCache.delete(element);
   }
 
   function ensureCacheObserver() {
@@ -438,10 +456,14 @@ var CLF_DOM = (() => {
     const memo = memoOf(section);
     if (memo && memo.rows) return memo.rows;
     const rows = [];
-    for (const node of section.querySelectorAll('[data-message-id]')) {
-      const id = node.getAttribute('data-message-id');
+    const shell = section.matches?.(SHELL_TURN) || section.matches?.(SHELL_UNIT);
+    const nodes = shell
+      ? [...(section.matches?.(SHELL_UNIT) ? [section] : []), ...section.querySelectorAll(`[data-message-id], ${SHELL_UNIT}`)]
+      : [...section.querySelectorAll('[data-message-id]')];
+    for (const node of nodes) {
+      const id = node.getAttribute('data-message-id') || (shell ? messageIdOf(node) : null);
       if (!id) continue;
-      const roleAttr = node.getAttribute('data-message-author-role') || '';
+      const roleAttr = node.getAttribute('data-message-author-role') || (shell ? shellRole(node) : '');
       const readable = roleAttr === 'user' || roleAttr === 'assistant';
       rows.push({ id, roleAttr, text: readable ? messageText(node, roleAttr) : null, node });
     }
@@ -469,8 +491,21 @@ var CLF_DOM = (() => {
     return safe(() => {
       const out = [];
       let previous = null;
-      for (const node of document.querySelectorAll(TURN)) {
-        const id = node.getAttribute('data-turn-id');
+      const nodes = [...document.querySelectorAll('section[data-testid^="conversation-turn"]'),
+        ...document.querySelectorAll(SHELL_TURN)];
+      for (const node of nodes) {
+        const id = turnIdOf(node);
+        if (node.matches?.(SHELL_TURN)) {
+          if (node.closest(`${OWN_SURFACES},.markdown,[data-markdown-text-style],[data-content-search-unit-key],[contenteditable]`)) continue;
+          const users = [...node.querySelectorAll('[data-content-search-unit-key$=":user"]')]
+            .filter(slot => slot.closest('[data-turn-key]') === node);
+          if (users.length !== 1 || !id) continue;
+          out.push({ node: users[0], nodes: [users[0]], id, role: 'user' });
+          if (node.querySelector('[data-chatgpt-agent-turn-start], [data-content-search-unit-key$=":assistant"]'))
+            out.push({ node, nodes: [node], id, role: 'assistant' });
+          previous = null;
+          continue;
+        }
         const role = node.getAttribute('data-turn');
         if (previous && id && previous.id === id && previous.role === role) {
           previous.nodes.push(node);
@@ -482,6 +517,25 @@ var CLF_DOM = (() => {
       return out;
     }, []);
   }
+
+  function turnIdOf(node) {
+    if (!node?.matches?.(SHELL_TURN)) return node?.getAttribute?.('data-turn-id') || null;
+    const key = node.getAttribute('data-turn-key');
+    if (key && !/^fallback-turn-\d+$/.test(key)) return key;
+    return node.querySelector('[data-content-search-turn-key]')?.getAttribute('data-content-search-turn-key') || null;
+  }
+
+  function messageIdOf(node) {
+    const explicit = node?.getAttribute?.('data-message-id');
+    if (explicit) return explicit;
+    const section = node?.closest?.(SHELL_TURN);
+    const stamp = node?.getAttribute?.('data-clf-shell-message') || '';
+    const owner = section?.getAttribute('data-clf-shell-owner');
+    if (!owner || !stamp.startsWith(`${owner}:`)) return null;
+    try { return decodeURIComponent(stamp.slice(owner.length + 1)) || null; } catch { return null; }
+  }
+
+  const shellRole = node => /:(user|assistant)$/.exec(node?.getAttribute?.('data-content-search-unit-key') || '')?.[1] || '';
 
   const presentationTurns = turns;
 
@@ -662,14 +716,52 @@ var CLF_DOM = (() => {
       renderedComposerNode(button) && (!form || button.closest('form') === form));
   }
 
+  function primarySlotControls() {
+    const form = composer()?.closest('form');
+    if (!form) return [];
+    return [...form.querySelectorAll('button[class*="size-token-button-composer"][class*="bg-composer-primary"]')]
+      .filter(button => renderedComposerNode(button) && button.closest('form') === form);
+  }
+
+  function isStopSquare(button) {
+    if (!button || button.hasAttribute('data-state')) return false;
+    const paths = button.querySelectorAll('svg path');
+    return paths.length === 1 && STOP_SQUARE.test(paths[0].getAttribute('d') || '');
+  }
+
+  function stopControls() {
+    const labelled = nativeComposerControls(STOP);
+    return labelled.length > 0 ? labelled : primarySlotControls().filter(isStopSquare);
+  }
+
+  function localeFreeSendControls() {
+    const box = composer();
+    const form = box?.closest('form');
+    if (!form) return [];
+    const drafted = (typeof box.innerText === 'string' ? box.innerText : box.textContent || '').trim();
+    if (drafted === '' || generating()) return [];
+    return [...form.querySelectorAll('button[class*="size-token-button-composer"][class*="bg-composer-primary"]')]
+      .filter(button => {
+        if (!renderedComposerNode(button) || button.closest('form') !== form || button.hasAttribute('data-state')) return false;
+        const paths = button.querySelectorAll('svg path');
+        if (paths.length === 1 && STOP_SQUARE.test(paths[0].getAttribute('d') || '')) return false;
+        return paths.length >= 1 && paths.length <= 2;
+      });
+  }
+
+  function sendControls() {
+    const labelled = nativeComposerControls(SEND);
+    return labelled.length > 0 ? labelled : localeFreeSendControls();
+  }
+
   /** Stop is a busy hint only; the exact provider terminal still owns turn completion. */
   function generating() {
-    return safe(() => nativeComposerControls(STOP).length > 0, false);
+    return safe(() => stopControls().length > 0, false);
   }
 
   function stopButton() {
     return safe(() => {
-      const buttons = nativeComposerControls(STOP);
+      const buttons = stopControls();
       return buttons.length === 1 ? buttons[0] : null;
     }, null);
   }
@@ -689,7 +781,7 @@ var CLF_DOM = (() => {
   /** The page-owned Send control, exposed so content.js can witness an actual submission. */
   function sendButton() {
     return safe(() => {
-      const buttons = nativeComposerControls(SEND);
+      const buttons = sendControls();
       return buttons.length === 1 ? buttons[0] : null;
     }, null);
   }
@@ -1392,7 +1484,19 @@ var CLF_DOM = (() => {
   }
 
   function composer() {
-    return safe(() => document.querySelector('#prompt-textarea'), null);
+    return safe(() => {
+      const classic = document.querySelector('#prompt-textarea');
+      if (classic) return classic;
+      const candidates = [...document.querySelectorAll('form[data-chatgpt-composer] [contenteditable="true"][role="textbox"]')]
+        .filter(node => !node.closest(`${OWN_SURFACES},[data-turn-key],.markdown,[hidden],[aria-hidden="true"],[inert]`));
+      return candidates.length === 1 ? candidates[0] : null;
+    }, null);
+  }
+
+  function composerWritable() {
+    const box = composer();
+    return !!box?.isConnected && !box.closest('[hidden],[aria-hidden="true"],[inert]') &&
+      box.getAttribute('aria-disabled') !== 'true' && box.getAttribute('contenteditable') !== 'false';
   }
 
   /**
@@ -1407,7 +1511,7 @@ var CLF_DOM = (() => {
   function composerSubmitReady() {
     return safe(() => {
       const box = composer();
-      if (!box || !box.isConnected) return false;
+      if (!composerWritable()) return false;
       if (generating() || stopButton()) return false;
       if ((box.textContent || '').trim() !== '') return false;
       if (box.getAttribute('aria-disabled') === 'true') return false;
@@ -2136,10 +2240,13 @@ var CLF_DOM = (() => {
   }
   /** UI only transports a requested selection. Provider state proves identity and availability. */
   function modelPickerTrigger() {
-    const candidates = [...(composer()?.closest('form')?.querySelectorAll('button[aria-haspopup="menu"]') || [])]
-      .filter(node => !node.closest(`${OWN_SURFACES},[hidden],[aria-hidden="true"],[inert]`) && node.getClientRects().length > 0 &&
+    const reported = '[data-codex-intelligence-trigger],[data-composer-navigation-target="reasoning"]';
+    const candidates = [...new Set([...(composer()?.closest('form')?.querySelectorAll('button[aria-haspopup="menu"]') || []),
+      ...document.querySelectorAll(reported)])]
+      .filter(node => node.matches('button,[role="button"]') && !node.closest(`${OWN_SURFACES},[data-testid^="conversation-turn"],[data-message-author-role],.markdown,[contenteditable],[hidden],[aria-hidden="true"],[inert]`) && node.getClientRects().length > 0 &&
         node.id !== 'composer-plus-btn' && node.getAttribute('data-testid') !== 'composer-plus-btn');
-    return candidates.length === 1 ? candidates[0] : null;
+    const observed = candidates.filter(node => node.getAttribute('data-clf-picker-route') === location.pathname);
+    return observed.length === 1 ? observed[0] : candidates.length === 1 && !candidates[0].matches(reported) ? candidates[0] : null;
   }
   /** Match the row's leading name, excluding secondary captions and decorations. */
   function pickerVersionNamed(row, expected) {
@@ -2155,7 +2262,7 @@ var CLF_DOM = (() => {
   }
   function modelPickerAccess(stillCurrent) {
     const shown = node => node && !node.closest('[hidden],[aria-hidden="true"],[inert]') && node.getClientRects().length > 0;
-    const picker = () => document.querySelector('[data-testid="composer-intelligence-picker-content"]');
+    const picker = () => document.querySelector(PICKER);
     const trigger = modelPickerTrigger;
     let motion = null;
     const openPicker = () => {
@@ -2179,6 +2286,7 @@ var CLF_DOM = (() => {
       const timer = setTimeout(() => finish(null), timeout); void check();
     });
     const state = predicate => wait(async () => { const value = await readPickerState(); return value && (!predicate || predicate(value)) ? value : null; });
+    const readyTrigger = () => wait(async () => { await readPickerState(); return trigger(); }, 15000);
     const key = (node, value) => { if (!node || !stillCurrent()) return false; node.focus(); node.dispatchEvent(new KeyboardEvent('keydown', { key: value, code: value, bubbles: true, cancelable: true })); return true; };
     return {
       state,
@@ -2189,15 +2297,15 @@ var CLF_DOM = (() => {
         // focus scope indefinitely. Suppress only this owned picker animation for
         // this operation; native state still closes/unmounts it and proves release.
         motion = document.createElement('style');
-        motion.textContent = '[role="menu"]:has(> [data-testid="composer-intelligence-picker-content"]),[role="dialog"]:has([data-testid="composer-intelligence-picker-content"]){animation:none!important}';
+        motion.textContent = '[role="menu"]:has(> [data-testid="composer-intelligence-picker-content"]),[role="dialog"]:has([data-testid="composer-intelligence-picker-content"]),[role="menu"]:has([data-model-picker-view]),[role="menu"][data-model-picker-view]{animation:none!important}';
         document.head.append(motion);
         // A cold home editor mounts before its native Chat/Work picker. Workers
         // enter here directly, without the New Chat reuse/catalog preparation.
         // Wait for that surface, then use the same owned Chat transition before
         // interpreting account choices. Work's picker is not a denied Chat model.
-        if (!await wait(trigger, 15000) || !await prepareChatModelSurface(stillCurrent)) return null;
+        if (!await readyTrigger() || !await prepareChatModelSurface(stillCurrent)) return null;
         // A retained exit-animation node is not an open native menu.
-        if (!openPicker()) { const button = await wait(trigger, 15000); if (!key(button, 'Enter') || !await wait(openPicker)) return null; }
+        if (!openPicker()) { const button = await readyTrigger(); if (!key(button, 'Enter') || !await wait(openPicker)) return null; }
         return state();
       },
       async close() {
@@ -2210,7 +2318,9 @@ var CLF_DOM = (() => {
         // Escape belongs inside the picker focus trap, not to its outside trigger.
         // A dispatched key is only an attempt: native unmount/animation owns closure.
         if (!key(panel.contains(active) || dialog?.contains(active) ? active : panel, 'Escape')) return false;
-        return Boolean(await wait(() => !shown(picker()) && (!dialog?.isConnected || !shown(dialog))));
+        const closed = Boolean(await wait(() => !shown(picker()) && (!dialog?.isConnected || !shown(dialog))));
+        if (closed && stillCurrent()) await readPickerState();
+        return closed && stillCurrent();
         } finally { motion?.remove(); motion = null; }
       },
       async version(version) {
@@ -2222,7 +2332,7 @@ var CLF_DOM = (() => {
         // The picker may already show the version list (including a checked row).
         // Select that row to return to its effort view; never assume the slider is open.
         if (!versionRows().length) {
-          const toggle = [...picker().querySelectorAll('[role="menuitem"][aria-expanded]')].filter(shown);
+          const toggle = [...picker().querySelectorAll('[role="menuitem"][aria-expanded], [role="menuitem"][data-model-picker-view-toggle]')].filter(shown);
           if (toggle.length !== 1) return null;
           toggle[0].click();
         }
@@ -2252,7 +2362,7 @@ var CLF_DOM = (() => {
   // The current native picker or closed trigger carries the MAIN-world snapshot.
   // The route stamp prevents a retained composer from lending another chat proof.
   function visibleModelSelection() {
-    const node = document.querySelector('[data-testid="composer-intelligence-picker-content"]') || modelPickerTrigger();
+    const node = document.querySelector(PICKER) || modelPickerTrigger();
     if (node?.getAttribute('data-clf-selected-route') !== location.pathname) return null;
     const model = node?.getAttribute('data-clf-selected-model'), reasoningEffort = node?.getAttribute('data-clf-selected-effort');
     return model && /^[a-zA-Z0-9._-]{1,80}$/.test(model) && ['none','minimal','low','medium','high','xhigh','max','ultra','pro'].includes(reasoningEffort)
@@ -2496,6 +2606,7 @@ var CLF_DOM = (() => {
     toolLabel,
     errors,
     composer,
+    composerWritable,
     composerSubmitReady,
     composerBox,
     pageTheme,

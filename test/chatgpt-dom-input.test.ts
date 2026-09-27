@@ -7,6 +7,9 @@ interface DomApi {
   insertPrompt(text: string, mode?: boolean | 'append', failure?: (reason: string) => void): boolean;
   enterProject(entry: { id: string; sourceConversationId: string }, current?: () => boolean): Promise<boolean>;
   composerActions(): { host: HTMLElement; before: HTMLElement | null } | null;
+  composer(): HTMLElement | null;
+  composerWritable(): boolean;
+  messages(): Array<{ id: string; role: string; text: string }>;
   generating(): boolean;
   sendButton(): HTMLButtonElement | null;
   temporaryChatReady(): boolean;
@@ -214,6 +217,29 @@ describe('native Project entry readiness', () => {
 });
 
 describe('one native Send and bounded acceptance observation', () => {
+  it('finds the unique writable shell composer and its locale-free primary Send slot', () => {
+    document.body.innerHTML = '<form data-chatgpt-composer><div contenteditable="true" role="textbox">A queued message</div><button type="button" class="size-token-button-composer bg-composer-primary"><svg><path d="M4 12L20 4L12 20Z"></path></svg></button></form>';
+    const composer = api.composer();
+    expect(composer?.textContent).toBe('A queued message');
+    expect(api.composerWritable()).toBe(true);
+    expect(api.sendButton()).toBe(document.querySelector('button'));
+    composer!.setAttribute('contenteditable', 'false');
+    expect(api.composerWritable()).toBe(false);
+  });
+
+  it('refuses ambiguous locale-free primary controls in the new composer', () => {
+    document.body.innerHTML = '<form data-chatgpt-composer><div contenteditable="true" role="textbox">A queued message</div><button class="size-token-button-composer bg-composer-primary"><svg><path d="M4 12L20 4"></path></svg></button><button class="size-token-button-composer bg-composer-primary"><svg><path d="M4 12L20 4"></path></svg></button></form>';
+    expect(api.composer()).not.toBeNull();
+    expect(api.sendButton()).toBeNull();
+  });
+
+  it('reads a shell user receipt only from the Fiber-stamped native slot', () => {
+    document.body.innerHTML = '<div data-app-shell-main-surface><div data-thread-find-target="conversation"><div data-turn-key="turn-123" data-clf-shell-owner="turn-123"><div data-content-search-unit-key="turn-123:0:user" data-clf-shell-message="turn-123:user-456"><div class="whitespace-pre-wrap">Queued shell message</div></div></div></div></div>';
+    expect(api.messages()).toEqual([expect.objectContaining({ id: 'user-456', role: 'user', text: 'Queued shell message' })]);
+    document.querySelector('[data-clf-shell-message]')!.removeAttribute('data-clf-shell-message');
+    expect(api.messages()).toEqual([]);
+  });
+
   it.each([false, true])('retires only the unchanged accepted composer text (new draft: %s)', async edited => {
     document.execCommand = command => { if (command === 'delete') box.replaceChildren(); return true; };
     button.addEventListener('click', () => {

@@ -71,7 +71,9 @@
   /** Public generated-image descriptors retained per turn. Pixels never cross this boundary. */
   const MAX_GENERATED_IMAGES = 200;
   /** ChatGPT's own assistant turn sections, which is where a turn's message model hangs. */
-  const TURN_SECTION = 'section[data-testid^="conversation-turn"]';
+  const SHELL_TURN = '[data-app-shell-main-surface] [data-thread-find-target="conversation"] [data-turn-key]';
+  const TURN_SECTION = `section[data-testid^="conversation-turn"], ${SHELL_TURN}`;
+  const PICKER = '[data-testid="composer-intelligence-picker-content"], [data-model-picker-view]';
   /** ChatGPT-rendered authored prose. Tool rows and this extension's own surfaces are excluded. */
   const MARKDOWN = '.markdown';
   const TOOL = 'span[class*="tool-message"], div.pointer-events-none.contents';
@@ -1326,11 +1328,56 @@
    * exists for is the turn that rendered *no* row: climbing from a row cannot reach a turn
    * that has none, which is exactly the turn whose calls went missing.
    */
+  /** Stamp the mounted shell's exact native user message id onto its own user slot.
+   * The provider's rendered text is still read from the DOM; Fiber supplies identity only. */
+  function stampShellUserMessages() {
+    const desired = new Map();
+    try {
+      for (const section of document.querySelectorAll(SHELL_TURN)) {
+        const keys = [section.getAttribute('data-turn-key'),
+          section.querySelector('[data-content-search-turn-key]')?.getAttribute('data-content-search-turn-key')]
+          .filter(value => typeof value === 'string' && value.length > 0 && value.length <= 256);
+        if (!keys.length) continue;
+        let entry = null;
+        for (let fiber = fiberOf(section), up = 0; fiber && up < MAX_CLIMB; up++, fiber = fiber.return) {
+          const candidate = fiber.memoizedProps?.entry;
+          if (Array.isArray(candidate?.turn?.items) && keys.includes(candidate.id)) { entry = candidate; break; }
+        }
+        if (!entry || entry.turn.items.length > MAX_ROWS) continue;
+        const users = entry.turn.items.map((item, index) => ({ item, index }))
+          .filter(row => row.item?.type === 'user-message');
+        if (users.length !== 1) continue;
+        const { item, index } = users[0];
+        const id = str(item.messageId) || str(item.serverMessageId);
+        if (!id || id.length > 256 || (item.messageId && item.serverMessageId && item.messageId !== item.serverMessageId)) continue;
+        const key = `${entry.id}:${index}:user`;
+        const slots = [...section.querySelectorAll('[data-content-search-unit-key]')]
+          .filter(node => node.closest('[data-turn-key]') === section && node.getAttribute('data-content-search-unit-key') === key);
+        if (slots.length !== 1) continue;
+        desired.set(section, { owner: entry.id, node: slots[0], message: `${entry.id}:${encodeURIComponent(id)}` });
+      }
+      for (const section of document.querySelectorAll(SHELL_TURN)) {
+        const proof = desired.get(section);
+        const owner = proof?.owner || null;
+        if (section.getAttribute('data-clf-shell-owner') !== owner) {
+          if (owner) section.setAttribute('data-clf-shell-owner', owner);
+          else section.removeAttribute('data-clf-shell-owner');
+        }
+        for (const node of section.querySelectorAll('[data-clf-shell-message]')) {
+          if (node === proof?.node) continue;
+          node.removeAttribute('data-clf-shell-message');
+        }
+        if (proof && proof.node.getAttribute('data-clf-shell-message') !== proof.message)
+          proof.node.setAttribute('data-clf-shell-message', proof.message);
+      }
+    } catch { /* Unknown shell ownership leaves no trusted user-message receipt. */ }
+  }
+
   function turnsOf(scanToken) {
     const out = [];
     let sections;
     try {
-      sections = document.querySelectorAll(TURN_SECTION);
+      sections = [...document.querySelectorAll(TURN_SECTION)].filter(section => !section.matches?.(SHELL_TURN));
     } catch {
       return out;
     }
@@ -1531,6 +1578,7 @@
     }
     // Row stamps must exist before native activity projection excludes connectors.
     try {
+      stampShellUserMessages();
       turns = turnsOf(scanToken);
     } catch {
       turns = [];
@@ -1544,15 +1592,33 @@
   function pickerSnapshot() {
     // The closed native trigger retains the same picker owner. Passive recording
     // must not depend on discovery opening its portal first.
-    const form = document.querySelector('#prompt-textarea')?.closest('form');
-    const triggers = [...(form?.querySelectorAll('button[aria-haspopup="menu"]') || [])]
-      .filter(node => !node.closest(`${OWN_SURFACES},[hidden],[aria-hidden="true"],[inert]`) && node.getClientRects().length > 0 &&
+    const form = document.querySelector('#prompt-textarea, form[data-chatgpt-composer] [contenteditable="true"][role="textbox"]')?.closest('form');
+    const reported = '[data-codex-intelligence-trigger],[data-composer-navigation-target="reasoning"]';
+    const triggers = [...new Set([...(form?.querySelectorAll('button[aria-haspopup="menu"]') || []), ...document.querySelectorAll(reported)])]
+      .filter(node => node.matches('button,[role="button"]') && !node.closest(`${OWN_SURFACES},[data-testid^="conversation-turn"],[data-message-author-role],.markdown,[contenteditable],[hidden],[aria-hidden="true"],[inert]`) && node.getClientRects().length > 0 &&
         node.id !== 'composer-plus-btn' && node.getAttribute('data-testid') !== 'composer-plus-btn');
-    const node = document.querySelector('[data-testid="composer-intelligence-picker-content"]') || (triggers.length === 1 ? triggers[0] : null);
+    const candidates = [];
+    if (triggers.length <= 8) for (const trigger of triggers) {
+      try {
+        const picker = readPickerSnapshot(trigger) || readShellPickerSnapshot(trigger);
+        if (picker) candidates.push({ node: trigger, picker });
+      } catch { /* An unrelated native menu is not picker evidence. */ }
+    }
+    const specific = candidates.filter(candidate => candidate.node.matches(reported));
+    const identified = specific.length === 1 ? specific[0] : candidates.length === 1 ? candidates[0] : null;
+    const native = triggers.filter(trigger => trigger.matches(reported));
+    const fallback = native.length === 1 ? native[0] : triggers.length === 1 ? triggers[0] : null;
+    const node = document.querySelector(PICKER) || identified?.node || fallback;
     let state = null;
-    try { state = readPickerSnapshot(node); } catch { /* Unknown state invalidates prior proof. */ }
+    try { state = identified?.picker || readPickerSnapshot(node) || readShellPickerSnapshot(node); } catch { /* Unknown state invalidates prior proof. */ }
     const selected = state?.choices.find(choice => choice.bucket === state.currentBucket && choice.available) ||
-      (triggers.length === 1 && node === triggers[0] ? closedPickerSelection(node) : null);
+      (node && node === fallback ? closedPickerSelection(node) : null);
+    const provenTrigger = identified?.node || (selected && node === fallback ? fallback : null);
+    for (const trigger of triggers) {
+      if (trigger !== provenTrigger) trigger.removeAttribute('data-clf-picker-route');
+      else if (trigger.getAttribute('data-clf-picker-route') !== location.pathname) trigger.setAttribute('data-clf-picker-route', location.pathname);
+      if (trigger !== node) for (const attribute of ['data-clf-selected-model', 'data-clf-selected-effort', 'data-clf-selected-route']) trigger.removeAttribute(attribute);
+    }
     for (const [attribute, value] of [['data-clf-selected-model', selected?.id], ['data-clf-selected-effort', selected?.effort], ['data-clf-selected-route', selected && location.pathname]]) {
       if (!value) node?.removeAttribute(attribute);
       else if (node.getAttribute(attribute) !== value) node.setAttribute(attribute, value);
@@ -1611,6 +1677,45 @@
       const chosen = choices.find(c => c.bucket === currentBucket);
       if (selected?.modelSlug !== chosen.id || effortOf(selected) !== chosen.effort) return null;
       return { version, currentBucket, versions, choices };
+    }
+    return null;
+  }
+
+  /** The shell publishes a separate model-lane owner. Read its values only; never call page callbacks. */
+  function readShellPickerSnapshot(node) {
+    for (let fiber = node && fiberOf(node), up = 0; fiber && up < MAX_CLIMB; up++, fiber = fiber.return) {
+      const props = fiber.memoizedProps;
+      if (!Array.isArray(props?.powerSelections)) continue;
+      const selected = props.selectedPowerSelection ?? props.selectedLabelCandidate;
+      const options = props.modelListConfig?.options;
+      if (!selected || !Array.isArray(options) || options.length > 20 || props.powerSelections.length > 12) return null;
+      const id = value => typeof value === 'string' && /^[a-zA-Z0-9._-]{1,80}$/.test(value) ? value : null;
+      const group = value => typeof value === 'string' && /^[\p{L}\p{N}._ -]{1,80}$/u.test(value) && value.trim() === value ? value : null;
+      const label = value => typeof value === 'string' && value.trim() && value.length <= 80 ? value.trim() : null;
+      const effort = value => ({ none:'none', instant:'none', minimal:'minimal', min:'low', low:'low', standard:'medium', medium:'medium', extended:'high', high:'high', xhigh:'xhigh', 'extra high':'xhigh', max:'max', ultra:'ultra', pro:'pro' })[value] || null;
+      const laneEffort = choice => effort(String(choice?.labels?.effort ?? choice?.sliderLabel ?? '').trim().toLowerCase()) ?? effort(choice?.reasoningEffort);
+      const current = options.filter(option => option?.selected === true);
+      if (current.length !== 1) return null;
+      const version = group(current[0].id);
+      const versions = options.filter(option => option && option.disabled !== true)
+        .map(option => ({ id: group(option.id), label: label(option.label) }));
+      const choices = props.powerSelections.map(choice => ({
+        bucket: choice?.powerSettingIndex,
+        id: id(choice?.model),
+        label: label(choice?.modelLabel),
+        familyId: id(choice?.model),
+        familyLabel: label(choice?.modelLabel),
+        effort: laneEffort(choice),
+        available: props.modelSelectionDisabled !== true && choice?.disabled !== true &&
+          (!choice?.availability || choice.availability.status === 'available') && !props.modelSwitcherDenialsBySlug?.[choice?.model]
+      }));
+      if (!version || !versions.length || versions.some(option => !option.id || !option.label) || !choices.length ||
+          choices.some(choice => !Number.isInteger(choice.bucket) || !choice.id || !choice.label || !choice.effort) ||
+          new Set(versions.map(option => option.id)).size !== versions.length ||
+          new Set(choices.map(choice => choice.bucket)).size !== choices.length || !versions.some(option => option.id === version)) return null;
+      const matches = choices.filter(choice => choice.id === id(selected.model) && choice.effort === laneEffort(selected));
+      if (matches.length !== 1 || (selected.powerSettingIndex !== undefined && selected.powerSettingIndex !== matches[0].bucket)) return null;
+      return { version, currentBucket: matches[0].bucket, versions, choices };
     }
     return null;
   }

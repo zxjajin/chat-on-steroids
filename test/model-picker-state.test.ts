@@ -40,6 +40,36 @@ it('switches the observed Work surface to Chat once without relying on translate
   expect(await api.prepareChatModelSurface()).toBe(true); expect(click).toHaveBeenCalledTimes(1);
   expect(await api.prepareChatModelSurface()).toBe(true); expect(click).toHaveBeenCalledTimes(1);
 });
+
+it('observes the shell model picker from its native Fiber lane and keeps Extra High distinct from Pro', async () => {
+  page = new JSDOM('<form data-chatgpt-composer><div contenteditable="true" role="textbox"></div><button role="button" data-codex-intelligence-trigger>GPT-6 Pro</button></form>', { url: 'https://chatgpt.com/', runScripts: 'outside-only' });
+  const win = page.window, doc = win.document;
+  Object.defineProperty(win.HTMLElement.prototype, 'getClientRects', { value: () => [{}] });
+  win.postMessage = (data: unknown) => queueMicrotask(() => win.dispatchEvent(new win.MessageEvent('message', { data, source: win as unknown as Window, origin: win.location.origin })));
+  const extraHigh = { powerSettingIndex: 4, model: 'gpt-6-thinking', modelLabel: 'GPT-6', reasoningEffort: 'max', labels: { effort: 'Extra High' }, availability: { status: 'available' } };
+  const pro = { powerSettingIndex: 5, model: 'gpt-6-pro', modelLabel: 'GPT-6', reasoningEffort: 'medium', labels: { effort: 'Pro' }, availability: { status: 'available' } };
+  const trigger = doc.querySelector('[data-codex-intelligence-trigger]')! as any;
+  trigger.__reactFiber$shell = { memoizedProps: {
+    powerSelections: [extraHigh, pro], selectedPowerSelection: pro,
+    modelListConfig: { options: [{ id: '6', label: 'GPT-6', selected: true }] },
+    modelSelectionDisabled: false, modelSwitcherDenialsBySlug: {}
+  }, return: null };
+  win.eval(fiberSource); win.eval(domSource);
+  const read = () => new Promise<any>(resolve => {
+    const receive = (event: MessageEvent) => {
+      if (event.data?.source !== 'clf-picker-reply') return;
+      win.removeEventListener('message', receive as any); resolve(event.data.picker);
+    };
+    win.addEventListener('message', receive as any);
+    win.postMessage({ source: 'clf-picker-ask', nonce: 'shell-picker' }, win.location.origin);
+  });
+  const state = await read();
+  expect(state?.choices.map((choice: any) => choice.effort)).toEqual(['xhigh', 'pro']);
+  expect((win as any).CLF_DOM.visibleModelSelection()).toEqual({ model: 'gpt-6-pro', reasoningEffort: 'pro' });
+  expect(trigger.getAttribute('data-clf-picker-route')).toBe('/');
+  expect(JSON.stringify(state)).not.toContain('modelSelectionDisabled');
+});
+
 function fixture(versionCaption = '', closeDelay: number | null = 0) {
   page = new JSDOM('<form><div id="prompt-textarea" contenteditable="true"></div><div data-testid="composer-trailing-actions"><button type="button" aria-haspopup="menu">Denkaufwand</button><button data-testid="send-button">Senden</button></div></form>', { url: 'https://chatgpt.com/', runScripts: 'outside-only' });
   const win = page.window, doc = win.document;

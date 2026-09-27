@@ -1431,3 +1431,41 @@ describe('what may leave the page', () => {
     ]);
   });
 });
+
+it('stamps a shell user row only when the mounted turn and Fiber item identify the same slot', async () => {
+  const page = new JSDOM('<div data-app-shell-main-surface><div data-thread-find-target="conversation"><div data-turn-key="turn-123" data-content-search-turn-key="turn-123"><div data-content-search-unit-key="turn-123:0:user"><div class="whitespace-pre-wrap">Queued text</div></div></div></div></div>', {
+    url: 'https://chatgpt.com/', runScripts: 'outside-only'
+  });
+  try {
+    const win = page.window, doc = win.document;
+    const section = doc.querySelector('[data-turn-key]')! as any;
+    const item = { type: 'user-message', messageId: 'message-456', message: 'Queued text' };
+    const entry = { id: 'turn-123', turn: { items: [item] } };
+    section.__reactFiber$shell = { memoizedProps: { entry }, return: null };
+    win.eval(source);
+    const nonce = 'shell-receipt';
+    const reply = new Promise<void>(resolve => {
+      const receive = (event: MessageEvent) => {
+        if (event.data?.source !== 'clf-fiber-reply' || event.data.nonce !== nonce) return;
+        win.removeEventListener('message', receive as any); resolve();
+      };
+      win.addEventListener('message', receive as any);
+    });
+    win.dispatchEvent(new win.MessageEvent('message', { data: { source: 'clf-fiber-ask', nonce }, source: win as unknown as Window }));
+    await reply;
+    expect(section.getAttribute('data-clf-shell-owner')).toBe('turn-123');
+    expect(doc.querySelector('[data-content-search-unit-key]')?.getAttribute('data-clf-shell-message')).toBe('turn-123:message-456');
+    item.messageId = 'different-message';
+    const retryNonce = 'shell-receipt-updated';
+    const updated = new Promise<void>(resolve => {
+      const receive = (event: MessageEvent) => {
+        if (event.data?.source !== 'clf-fiber-reply' || event.data.nonce !== retryNonce) return;
+        win.removeEventListener('message', receive as any); resolve();
+      };
+      win.addEventListener('message', receive as any);
+    });
+    win.dispatchEvent(new win.MessageEvent('message', { data: { source: 'clf-fiber-ask', nonce: retryNonce }, source: win as unknown as Window }));
+    await updated;
+    expect(doc.querySelector('[data-content-search-unit-key]')?.getAttribute('data-clf-shell-message')).toBe('turn-123:different-message');
+  } finally { page.window.close(); }
+});
