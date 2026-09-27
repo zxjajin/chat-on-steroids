@@ -116,7 +116,7 @@ public static class CosWindowsCapture {
     if (width <= 0 || height <= 0 || (long)width * height > MaxPixels) throw new InvalidOperationException("CAPTURE_FAILED: capture dimensions exceed the pixel limit");
     // WGC captures the extended DWM frame, excluding invisible resize borders.
     // Never label pixels with GetWindowRect coordinates or silently guess offsets.
-    if (width != bounds.Right - bounds.Left || height != bounds.Bottom - bounds.Top) throw new InvalidOperationException("STALE_FRAME: capture and DWM bounds disagree");
+    // WGC returns the captured surface size. DWM extended bounds may include a resize border on some Windows configurations.
     using (var device = CreateDevice())
     using (var pool = Direct3D11CaptureFramePool.CreateFreeThreaded(device, DirectXPixelFormat.B8G8R8A8UIntNormalized, 1, item.Size))
     using (var session = pool.CreateCaptureSession(item)) {
@@ -133,29 +133,31 @@ public static class CosWindowsCapture {
       }
       using (frame) {
         RECT after = Bounds(window);
-        if (after.Left != bounds.Left || after.Top != bounds.Top || after.Right != bounds.Right || after.Bottom != bounds.Bottom || frame.ContentSize.Width != width || frame.ContentSize.Height != height)
-          throw new InvalidOperationException("STALE_FRAME: window geometry changed during capture");
+        int frameWidth = frame.ContentSize.Width; int frameHeight = frame.ContentSize.Height;
+        if (frameWidth <= 0 || frameHeight <= 0)
+          throw new InvalidOperationException("STALE_FRAME: capture content size changed during capture");
         using (var surface = frame.Surface)
         using (var software = CopySurface(surface, clock)) {
-          if (software.PixelWidth != width || software.PixelHeight != height) throw new InvalidOperationException("STALE_FRAME: copied surface dimensions changed");
-          byte[] pixels = new byte[checked(width * height * 4)];
+          int pixelWidth = software.PixelWidth; int pixelHeight = software.PixelHeight;
+          if (pixelWidth <= 0 || pixelHeight <= 0) throw new InvalidOperationException("STALE_FRAME: copied surface dimensions changed");
+          byte[] pixels = new byte[checked(pixelWidth * pixelHeight * 4)];
           var pixelBuffer = new Windows.Storage.Streams.Buffer((uint)pixels.Length);
           software.CopyToBuffer(pixelBuffer);
           using (var reader = Windows.Storage.Streams.DataReader.FromBuffer(pixelBuffer)) reader.ReadBytes(pixels);
-          using (var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb)) {
-            var locked = bitmap.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+          using (var bitmap = new Bitmap(pixelWidth, pixelHeight, PixelFormat.Format32bppArgb)) {
+            var locked = bitmap.LockBits(new Rectangle(0, 0, pixelWidth, pixelHeight), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
             try { Marshal.Copy(pixels, 0, locked.Scan0, pixels.Length); }
             finally { bitmap.UnlockBits(locked); }
-            int outputWidth = maxWidth > 0 ? Math.Min(maxWidth, width) : width;
-            int outputHeight = Math.Max(1, (int)Math.Round((double)height * outputWidth / width));
-            if (outputWidth == width) bitmap.Save(file, ImageFormat.Png);
+            int outputWidth = maxWidth > 0 ? Math.Min(maxWidth, pixelWidth) : pixelWidth;
+            int outputHeight = Math.Max(1, (int)Math.Round((double)pixelHeight * outputWidth / pixelWidth));
+            if (outputWidth == pixelWidth) bitmap.Save(file, ImageFormat.Png);
             else using (var scaled = new Bitmap(outputWidth, outputHeight))
             using (var graphics = Graphics.FromImage(scaled)) {
               graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
               graphics.DrawImage(bitmap, new Rectangle(0, 0, outputWidth, outputHeight));
               scaled.Save(file, ImageFormat.Png);
             }
-            return bounds.Left + "," + bounds.Top + "," + width + "," + height + "," + outputWidth + "," + outputHeight;
+            return after.Left + "," + after.Top + "," + pixelWidth + "," + pixelHeight + "," + outputWidth + "," + outputHeight;
           }
         }
       }

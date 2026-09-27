@@ -14,6 +14,7 @@ import { releaseSessionFinish, requestSessionFinishGoal } from './session/finish
 import { GOAL_MARKER_INSTRUCTION } from '../shared/goal-templates.js';
 import { validateInputImages } from './session/input-images.js';
 import { stageInputAttachment, type AttachmentSource } from './session/input-attachments.js';
+import { sessionMarkdown } from './session/export-markdown.js';
 import { recordDeliveredInput, recordedInputImage } from './session/input-history.js';
 import { UI_BASE_ZOOM, titleBarOverlayForTheme, windowBackgroundForTheme } from './window-layout.js';
 import { usageOverview } from './session/usage.js';
@@ -21,6 +22,7 @@ import { inputArgs, listInputs, editQueuedInput, reorderQueuedInputs, setInputAu
 import { draftOpeningMessage, onGoalChange, nativeGoalFailure } from './goal.js';
 import { cancelTaskRequest, runTaskRequest } from './task-request.js';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { retryGoalBrowserHelper } from './goal.js';
 import { requestBrowserPreferences } from './browser-preferences.js';
 import { sendDesktopInput, cancelDesktopInput, retryQueuedInputBrowser } from './session/start-input.js';
@@ -693,6 +695,12 @@ export function registerIpc(getWindow: () => BrowserWindow | null, quitToInstall
   handle('projectFiles:reveal', async payload => {
     const { projectId, path } = z.object({ projectId: projectFileId, path: projectRelativePath.default('') }).strict().parse(payload);
     const target = await projectFileTarget(projectId, path);
+    if (!path) {
+      if (target.kind !== 'directory') throw new Error('Choose a project folder');
+      const error = await shell.openPath(target.real);
+      if (error) throw new Error(error);
+      return true;
+    }
     shell.showItemInFolder(target.real);
     return true;
   });
@@ -902,6 +910,10 @@ export function registerIpc(getWindow: () => BrowserWindow | null, quitToInstall
     const nextFrom = events.reduce((cursor, event) => Math.max(cursor, event.seq + 1), from);
     return { summary, events, total: summary.events, nextFrom };
   });
+  handle('sessions:markdown', async payload => {
+    const { id } = sessionIdArg.parse(payload);
+    return sessionMarkdown(id);
+  });
 
   const stageFiles = async (sources: AttachmentSource[]) => {
     const retained = new Set((await listInputs()).filter(row => !['sent', 'failed', 'cancelled'].includes(row.state)).flatMap(row => row.attachments?.map(file => file.id) ?? []));
@@ -914,6 +926,25 @@ export function registerIpc(getWindow: () => BrowserWindow | null, quitToInstall
     if (chosen.canceled) return [];
     if (chosen.filePaths.length > 20) throw new Error('Attach up to 20 files per message');
     return stageFiles(chosen.filePaths);
+  });
+  handle('sessions:pasteFiles', async () => {
+    // Electron maps the OS copied-file format to file:// URIs. Keep native paths in
+    // main and return only opaque staged attachment metadata to the renderer.
+    const paths: string[] = [];
+    for (const item of await clipboard.read()) {
+      if (!item.types.includes('text/uri-list')) continue;
+      const payload = await item.getType('text/uri-list');
+      if (!(payload instanceof Blob) || payload.size > 64 * 1024) throw new Error('Clipboard file list is too large');
+      for (const line of (await payload.text()).split(/\r?\n/)) {
+        const uri = line.trim();
+        if (!uri || uri.startsWith('#')) continue;
+        const url = new URL(uri);
+        if (url.protocol !== 'file:') continue;
+        paths.push(fileURLToPath(url));
+        if (paths.length > 20) throw new Error('Attach up to 20 files per message');
+      }
+    }
+    return paths.length ? stageFiles(paths) : [];
   });
   handle('sessions:dropFiles', async payload => {
     const { files } = z.object({ files: z.array(z.union([

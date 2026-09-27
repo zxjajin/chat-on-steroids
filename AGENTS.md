@@ -607,6 +607,8 @@ Removing a project marks the catalog row `ungrouped`. Existing and unloaded sess
 inputs and workers keep their durable project association; their chats return to the ordinary
 sidebar list. Adding that same folder again restores grouping. It does not delete files,
 sessions or the approved root. A local project is distinct from a ChatGPT project route.
+The project sidebar menu opens its currently validated local folder in the OS file manager;
+main re-resolves the selected project under current approved roots before opening.
 
 `workspace.ts` is learned/inherited cwd, keyed to the proven chat or permitted transport request.
 Explicit session project binding takes precedence at kernel entry. Workers inherit only their
@@ -994,11 +996,13 @@ Renderer/browser receive opaque ids, names, sizes, MIME and bounded previews, ne
 Up to 20 files and 512 MiB total per message are locally admitted; provider limits can still
 reject an upload. Staging has a 2 GiB quota, serialized pruning/admission, and preserves outbox-
 retained bytes. Thumbnails do not modify originals or prove provider upload success.
-Image clipboard data and file drops anywhere in the window target the currently visible chat
+Clipboard files, including images, and file drops anywhere in the window target the currently visible chat
 draft; the Folders card keeps its explicit folder-drop owner, and ordinary text paste/drop keeps
 its native editor behavior. Async import results carry both the draft key and its replacement
 generation. Navigation, Send, accepted planning and retry replacement retire that owner so a
 late file cannot attach to a later draft, while ordinary edits and parallel imports remain valid.
+When the renderer's paste event does not carry file bytes or paths, main reads the OS copied-file
+clipboard format only for a file paste. Native paths stay in main; staging returns opaque metadata.
 
 Bridge chunks are bounded to 512 KiB and require the exact pre-send claimed input and attachment
 membership. Native upload completion and final provider submission are separate checks.
@@ -2300,6 +2304,9 @@ Electron with unchanged artwork, process CPU deltas and actual animation wakes.
 Projects, workers, plans, model choice, usage and plugins have focused modules (§4). The renderer
 calls a fixed `preload/index.ts` allowlist into validated `ipc.ts`/`plugins-ipc.ts` handlers.
 No arbitrary IPC invocation, Node access, filesystem path opening or renderer-side secret store.
+Message actions copy visible prose, Markdown source or individual code blocks through the fixed
+clipboard channel. A chat sidebar action exports only recorded user/assistant messages as bounded
+Markdown; missing full text or an oversized export fails visibly rather than copying partial history.
 Changing the selected session synchronously retires prior data/control ownership and handoff.
 Keep the last painted transcript and images inert while the destination detail loads, then
 replace them directly; queue/status repaints must not flash the New Chat welcome screen.

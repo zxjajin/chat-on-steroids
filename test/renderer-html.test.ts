@@ -193,8 +193,8 @@ describe('a capture that could not be carried whole', () => {
     // The prose either side of the block is prose, not part of the box.
     const paragraphs = [...rendered.querySelectorAll('p')].map((node) => node.textContent);
     expect(paragraphs).toEqual(['Run the suite before pushing.', 'Then open a pull request.']);
-    expect(rendered.querySelector('button')).toBeNull();
-    expect(rendered.textContent).not.toContain('Copy');
+    expect(rendered.querySelector('button[aria-label="Copy code"]')).not.toBeNull();
+    expect(rendered.querySelector('button[aria-label="Edit"]')).toBeNull();
   });
 
   it('shows the whole message as markdown rather than a cut capture ending inside a code box', () => {

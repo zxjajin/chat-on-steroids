@@ -338,7 +338,7 @@ function unattributedBlocked(): boolean {
 
 /** Multi-agent is one renderer surface switch; runtime state remains authoritative elsewhere. */
 function multiAgentEnabled(): boolean {
-  return deps.state()?.config.multiAgent.enabled ?? false;
+  return deps.state()?.config?.multiAgent?.enabled ?? false;
 }
 
 function clearAgentPlan(): void {
@@ -426,6 +426,13 @@ function sessionBadges(summary: SessionSummary): Badge[] {
 function sessionRow(summary: SessionSummary): HTMLElement {
   const row = el('div', 'sess');
   row.dataset.id = summary.id;
+  row.addEventListener('contextmenu', event => {
+    document.getElementById('sessionTooltip')?.remove();
+    showContextMenu(event, [{
+      label: 'Copy conversation as Markdown',
+      action: () => { void copyConversation(summary.id); }
+    }]);
+  });
   if (summary.id === selectedId) row.classList.add('is-sel');
   if (summary.id === activeId && summary.endedAt === null) row.classList.add('is-live');
 
@@ -650,6 +657,55 @@ function maybePageSessions(): void {
 
 let diagnosticsExpanded = false;
 
+let activeContextMenu: HTMLElement | null = null;
+let contextMenuInitialized = false;
+function closeContextMenu(): void {
+  activeContextMenu?.remove();
+  activeContextMenu = null;
+}
+
+function showContextMenu(event: MouseEvent, actions: Array<{ label: string; action: () => void }>): void {
+  event.preventDefault();
+  event.stopPropagation();
+  closeContextMenu();
+  const menu = el('div', 'chat-context-menu');
+  menu.setAttribute('role', 'menu');
+  for (const item of actions) {
+    const button = el('button', '', () => t(item.label)) as HTMLButtonElement;
+    button.type = 'button';
+    button.setAttribute('role', 'menuitem');
+    button.onclick = () => { closeContextMenu(); item.action(); };
+    menu.append(button);
+  }
+  document.body.append(menu);
+  activeContextMenu = menu;
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const x = event.clientX || rect.left, y = event.clientY || rect.bottom;
+  menu.style.left = `${Math.max(4, Math.min(x, window.innerWidth - menu.offsetWidth - 4))}px`;
+  menu.style.top = `${Math.max(4, Math.min(y, window.innerHeight - menu.offsetHeight - 4))}px`;
+  menu.querySelector('button')?.focus();
+}
+
+function initContextMenu(): void {
+  if (contextMenuInitialized) return;
+  contextMenuInitialized = true;
+  document.addEventListener('pointerdown', event => {
+    if (activeContextMenu && !activeContextMenu.contains(event.target as Node)) closeContextMenu();
+  });
+  document.addEventListener('keydown', event => {
+    if (!activeContextMenu) return;
+    if (event.key === 'Escape') { event.preventDefault(); closeContextMenu(); return; }
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const buttons = [...activeContextMenu.querySelectorAll<HTMLButtonElement>('button')];
+    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    event.preventDefault();
+    buttons[(index + (event.key === 'ArrowDown' ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+  });
+  window.addEventListener('blur', closeContextMenu);
+  window.addEventListener('resize', closeContextMenu);
+  document.addEventListener('scroll', closeContextMenu, true);
+}
+
 function paintSessions(): void {
   // Keep the pointer's elected rows alive while asynchronous activity snapshots arrive.
   if (sidebarOrder?.interacting) return;
@@ -728,6 +784,10 @@ function paintSessions(): void {
       if (open) expandedProjects.add(id); else expandedProjects.delete(id);
       section.open = open;
     });
+    if (project) heading.addEventListener('contextmenu', event => showContextMenu(event, [{
+      label: 'Open in file manager',
+      action: () => { void run(api.revealProjectFileEntry(id)); }
+    }]));
     if (project) {
       const create = el('button', 'btn project-new'); create.append(icon('i-pencil')); create.setAttribute('type', 'button'); create.dataset.newProject = id;
       ui(create, 'title', () => t("New chat in this project")); create.setAttribute('aria-label', create.title);
@@ -1600,7 +1660,33 @@ export function renderedMessage(html: StoredText | null | undefined, fallback: s
     box.classList.remove('rich');
     box.textContent = safeFallback;
   }
+  for (const pre of box.querySelectorAll('pre')) {
+    const code = pre.querySelector('code') ?? pre;
+    const wrapper = el('div', 'code-block');
+    pre.replaceWith(wrapper);
+    wrapper.append(pre, copyMessageButton('Copy code', () => code.textContent ?? ''));
+  }
   return box;
+}
+
+async function copyMessage(text: string): Promise<void> {
+  if (!text) return;
+  if (await run(api.writeClipboard(text))) toast('Copied');
+}
+
+async function copyConversation(id: string): Promise<void> {
+  const markdown = await run(api.getSessionMarkdown(id));
+  if (markdown !== null) await copyMessage(markdown);
+}
+
+function copyMessageButton(label: string, source: () => string): HTMLButtonElement {
+  const button = el('button', 'btn message-copy') as HTMLButtonElement;
+  button.type = 'button';
+  button.append(icon('i-copy'));
+  ui(button, 'title', () => t(label));
+  ui(button, 'aria-label', () => t(label));
+  button.onclick = event => { event.stopPropagation(); void copyMessage(source()); };
+  return button;
 }
 
 /**
@@ -1866,6 +1952,12 @@ function eventBody(event: SessionEvent, context?: { id: string; current: () => b
       // complete instruction frame validates; keep the authored suffix exact.
       const userText = event.authoredText ?? userPromptText(event.message.text.trimStart()) ?? event.message.text;
       if (userText) box.append(textBlock('msg user-message-text', userText, event.authoredText === undefined && event.message.truncated, event.authoredText?.length ?? event.message.chars));
+      if (userText) {
+        const actions = el('div', 'message-actions');
+        actions.append(copyMessageButton('Copy message', () => userText));
+        box.append(actions);
+        box.addEventListener('contextmenu', menuEvent => showContextMenu(menuEvent, [{ label: 'Copy message', action: () => { void copyMessage(userText); } }]));
+      }
       paintMessageReaction(box, event.reaction);
       if (event.inputDelivery) {
         box.classList.add('has-input-receipt');
@@ -1893,7 +1985,18 @@ function eventBody(event: SessionEvent, context?: { id: string; current: () => b
     case 'assistant_message': {
       const box = el('div', 'said');
       box.append(el('b', '', () => event.final ? 'ChatGPT' : t("ChatGPT (partial)")));
-      box.append(renderedMarkdown(event.message.text, event.renderedHtml));
+      const message = renderedMarkdown(event.message.text, event.renderedHtml);
+      const markdown = withoutMessageReaction(event.message.text);
+      const plain = () => message.innerText || markdown;
+      box.append(message);
+      const actions = el('div', 'message-actions');
+      actions.append(copyMessageButton('Copy message', plain));
+      if (!event.message.truncated) actions.append(copyMessageButton('Copy as Markdown', () => markdown));
+      box.append(actions);
+      box.addEventListener('contextmenu', menuEvent => showContextMenu(menuEvent, [
+        { label: 'Copy message', action: () => { void copyMessage(plain()); } },
+        ...(!event.message.truncated ? [{ label: 'Copy as Markdown', action: () => { void copyMessage(markdown); } }] : [])
+      ]));
       return box;
     }
     case 'native_image': {
@@ -3923,6 +4026,7 @@ function selectNewChat(projectId: string | null = null): void {
 }
 
 export function initChat(next: Deps): void {
+  initContextMenu();
   sidebarOrder = createSidebarOrder($('sessionList'), () => sessions
     .filter(entry => (entry.conversationId || entry.origin?.kind === 'desktop') && entry.origin?.kind !== 'worker')
     .map(entry => ({ id: entry.id, scope: projectGroup(entry.projectId) ?? '' })), paintSessions);
@@ -4161,12 +4265,18 @@ export function initChat(next: Deps): void {
     if (text) { const file = await run(api.attachText(text)); if (file) appendImages(owner, [file]); }
   });
   window.addEventListener('paste', async event => {
-    const files = Array.from(event.clipboardData?.files ?? []).filter(file => file.type.startsWith('image/'));
-    if (!files.length) return;
+    const files = Array.from(event.clipboardData?.files ?? []);
+    const types = Array.from(event.clipboardData?.types ?? []);
+    const getData = event.clipboardData?.getData;
+    const fileUris = typeof getData === 'function' ? getData.call(event.clipboardData, 'text/uri-list') : '';
+    if (!files.length && !types.includes('Files') && !fileUris.split(/\r?\n/).some(uri => uri.trim().startsWith('file:'))) return;
     event.preventDefault();
     const owner = composerDraftOwner();
     if (files.length + (imageDrafts.get(owner.key)?.length ?? 0) > 20) { toast('Attach up to 20 files per message'); return; }
-    appendImages(owner, await run(api.dropFiles(files)));
+    if (files.length) { appendImages(owner, await run(api.dropFiles(files))); return; }
+    const native = await api.pasteClipboardFiles();
+    if (native.ok && Array.isArray(native.data) && native.data.length) { appendImages(owner, native.data); return; }
+    if (!native.ok) toast(native.error);
   });
   window.addEventListener('dragover', event => {
     if ((event.target as Element | null)?.closest?.('#foldersCard') || !event.dataTransfer?.types?.includes?.('Files')) return;

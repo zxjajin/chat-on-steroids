@@ -30,7 +30,7 @@ $enter=[CosWindowsKeys]::ResolveForLayout(@('Return'),[IntPtr]1,$layout)
 $physical=[CosWindowsKeys]::ResolveForLayout(@('Shift_R','z'),[IntPtr]2,$layout)
 $keys=[CosWindowsKeys]::ResolveForLayout(@('KP_0','F24'),[IntPtr]2,$layout)
 $failures=0
-foreach ($name in @('imaginary','☃')) {
+foreach ($name in @('imaginary','bad-key')) {
   try { [CosWindowsKeys]::ResolveForLayout(@($name),[IntPtr]1,$layout); throw 'Accepted unsupported key' }
   catch { if ($_.Exception.GetBaseException().Message -notmatch '^BAD_KEY:') { throw }; $failures++ }
 }

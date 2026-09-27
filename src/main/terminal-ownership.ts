@@ -14,7 +14,7 @@
  * adopt such a session and an anonymous call cannot touch a proven-owned session.
  */
 
-import { requestCorrelation } from '../session/correlation.js';
+import { requestCorrelation } from './session/correlation.js';
 import { unifiedExecManager } from './codex/manager.js';
 import type { BackgroundExecState, OutputPublication } from './codex/unified-exec.js';
 import { truncateText } from './codex/truncate.js';

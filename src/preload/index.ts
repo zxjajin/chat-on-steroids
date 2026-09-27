@@ -110,6 +110,7 @@ const api = {
     return () => ipcRenderer.removeListener('plugins:changed', wrapped);
   },
   chooseFiles: () => call<InputAttachment[]>('sessions:files'),
+  pasteClipboardFiles: () => call<InputAttachment[]>('sessions:pasteFiles'),
   listSkills: () => call<SkillSummary[]>('skills:list'),
   skillLibrary: (scope: SkillsDraftScope) => call<SkillLibrary>('skills:library', scope),
   dropFiles: async (files: File[]): Promise<Reply<InputAttachment[]>> => {
@@ -118,7 +119,7 @@ const api = {
       const sources = [];
       for (const file of files) {
         const path = webUtils.getPathForFile(file);
-        if (!path && file.size > 12 * 1024 * 1024) return { ok: false, error: 'Pasted images must be 12 MB or smaller' };
+        if (!path && file.size > 12 * 1024 * 1024) return { ok: false, error: 'Clipboard files without a local path must be 12 MB or smaller' };
         sources.push(path || { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
       }
       return await call<InputAttachment[]>('sessions:dropFiles', { files: sources });
@@ -185,6 +186,7 @@ const api = {
   clearImageStorage: (mode: ImageStorageClearMode) => call<ImageStorageClearResult>('sessions:clearImageStorage', { mode }),
     getSession: (id: string, options?: { from?: number; before?: number; after?: number; limit?: number }) =>
     call<SessionDetail>('sessions:events', { id, ...options }),
+  getSessionMarkdown: (id: string) => call<string>('sessions:markdown', { id }),
   stopSessionTurn: (id: string, expectedTurnId: string) => call<SessionControlsView>('sessions:stopTurn', { id, expectedTurnId }),
   releaseSessionFinish: (id: string, expectedTurnId: string) => call<SessionControlsView>('sessions:releaseFinish', { id, expectedTurnId }),
   generateFinishGoal: (id: string, expectedTurnId: string) => call<string>('sessions:generateFinishGoal', { id, expectedTurnId }),

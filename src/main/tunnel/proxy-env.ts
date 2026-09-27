@@ -42,9 +42,13 @@ export async function readTunnelProxyEnvironment(): Promise<CommandEnvironment> 
     if (!line || line.startsWith('#')) continue;
     const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=(.*)$/.exec(line);
     if (!match) continue;
-    const key = match[1].toUpperCase();
-    if (!PROXY_KEYS.has(key)) continue;
-    result[key] = parseValue(match[2]);
+    const key = match[1];
+    const value = match[2];
+    if (!key || value === undefined) continue;
+
+    const normalizedKey = key.toUpperCase();
+    if (!PROXY_KEYS.has(normalizedKey)) continue;
+    result[normalizedKey] = parseValue(value);
   }
   return result;
 }

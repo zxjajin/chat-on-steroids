@@ -25,6 +25,7 @@ import { currentCall, currentCaller } from './call-context.js';
 import { awaitFreshCallOrigin, recordAgentMessage } from '../session/recorder.js';
 import { requestCorrelation } from '../session/correlation.js';
 import { findSessionByConversation } from '../session/store.js';
+import { REASONING_EFFORTS } from '../../shared/session.js';
 import {
   adoptAgent,
   fail,
@@ -532,7 +533,7 @@ async function callerNow(startedAt: number, options: { exact?: boolean; runId?: 
   if (!resolved && !allowRequest) {
     logWarn(
       base.requestId
-        ? `agents caller not identified: no page evidence matched HTTP request ${base.requestId.slice(0, 20)}…`
+        ? 'agents caller not identified: no page evidence matched HTTP request ' + base.requestId.slice(0, 20)
         : 'agents caller not identified: this MCP request carried no request id and page evidence was insufficient'
     );
   }
