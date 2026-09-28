@@ -50,6 +50,7 @@ const {
   releaseVersion,
   resetUpdateForTests,
   stagedArtifact,
+  startUpdateChecks,
   updateStatus
 } = await import('../src/main/update.js');
 
@@ -472,22 +473,14 @@ describe('staged executable authority across later events', () => {
     await applyStagedUpdate();
     expect(spawned).toEqual([]);
   });
-  it('starts immediately and repeats on the unreferenced six-hour timer', async () => {
-    const unref = vi.fn();
-    let repeat: (() => void) | undefined;
-    const interval = vi.spyOn(globalThis, 'setInterval').mockImplementation(((callback: () => void, delay: number) => {
-      expect(delay).toBe(6 * 60 * 60_000);
-      repeat = callback;
-      return { unref };
-    }) as unknown as typeof setInterval);
+  it('does not contact upstream or schedule automatic update checks for this fork', () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const interval = vi.spyOn(globalThis, 'setInterval');
     try {
-      const { startUpdateChecks } = await import('../src/main/update.js');
-      const first = github({ version: APP_VERSION });
-      startUpdateChecks(); await checkForUpdates();
-      expect(first.asked).toEqual(['latest']); expect(unref).toHaveBeenCalledOnce();
-      const next = github({ version: APP_VERSION });
-      repeat!(); await checkForUpdates();
-      expect(next.asked).toEqual(['latest']);
+      startUpdateChecks();
+      expect(fetch).not.toHaveBeenCalled();
+      expect(interval).not.toHaveBeenCalled();
     } finally { interval.mockRestore(); }
   });
 });

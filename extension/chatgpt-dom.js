@@ -23,9 +23,11 @@
  */
 
 var CLF_DOM = (() => {
+  const LEGACY_TURN = 'section[data-testid^="conversation-turn"]';
   const SHELL_TURN = '[data-app-shell-main-surface] [data-thread-find-target="conversation"] [data-turn-key]';
   const SHELL_UNIT = '[data-content-search-unit-key]';
-  const TURN = `section[data-testid^="conversation-turn"], ${SHELL_TURN}`;
+  const SEARCH_TURN = '[data-chatgpt-search-unit-key]';
+  const TURN = `${LEGACY_TURN}, ${SHELL_TURN}, ${SEARCH_TURN}`;
   const PICKER = '[data-testid="composer-intelligence-picker-content"], [data-model-picker-view]';
   // ChatGPT has used both shapes in the live renderer: the older tool-message span
   // and, as of 2026-08-15, a display-contents row wrapping the visible tool label.
@@ -59,6 +61,10 @@ var CLF_DOM = (() => {
 
   const text = (node, cap = 256_000) =>
     node ? (node.textContent || '').replace(/ /g, ' ').trim().slice(0, cap) : '';
+
+  const searchUnitRole = node => /:(user|assistant)$/.exec(
+    node?.getAttribute?.('data-chatgpt-search-unit-key') ||
+    node?.getAttribute?.('data-content-search-unit-key') || '')?.[1] || '';
 
   // Wire framing matches shared/user-prompt.ts; neither reader changes provider text.
   const promptContinuation = value => /^\[\[CLF-(?:HANDOFF|RESUME):[A-Za-z0-9_-]{16,64}\]\]\n\n/.exec(value)?.[0] ?? '';
@@ -401,6 +407,9 @@ var CLF_DOM = (() => {
     'data-turn-id',
     'data-turn-key',
     'data-content-search-unit-key',
+    'data-chatgpt-search-message-ids',
+    'data-chatgpt-search-unit-key',
+    'data-chatgpt-selection-message-id',
     'data-clf-shell-owner',
     'data-clf-shell-message',
     'data-testid',
@@ -456,14 +465,14 @@ var CLF_DOM = (() => {
     const memo = memoOf(section);
     if (memo && memo.rows) return memo.rows;
     const rows = [];
-    const shell = section.matches?.(SHELL_TURN) || section.matches?.(SHELL_UNIT);
-    const nodes = shell
-      ? [...(section.matches?.(SHELL_UNIT) ? [section] : []), ...section.querySelectorAll(`[data-message-id], ${SHELL_UNIT}`)]
-      : [...section.querySelectorAll('[data-message-id]')];
+    const holder = `[data-message-id], ${SHELL_UNIT}, [data-chatgpt-search-message-ids], [data-chatgpt-selection-message-id]`;
+    const nodes = [...(section.matches?.(holder) ? [section] : []), ...section.querySelectorAll(holder)];
+    const seen = new Set();
     for (const node of nodes) {
-      const id = node.getAttribute('data-message-id') || (shell ? messageIdOf(node) : null);
-      if (!id) continue;
-      const roleAttr = node.getAttribute('data-message-author-role') || (shell ? shellRole(node) : '');
+      const id = messageIdOf(node);
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const roleAttr = node.getAttribute('data-message-author-role') || searchUnitRole(node);
       const readable = roleAttr === 'user' || roleAttr === 'assistant';
       rows.push({ id, roleAttr, text: readable ? messageText(node, roleAttr) : null, node });
     }
@@ -491,12 +500,11 @@ var CLF_DOM = (() => {
     return safe(() => {
       const out = [];
       let previous = null;
-      const nodes = [...document.querySelectorAll('section[data-testid^="conversation-turn"]'),
-        ...document.querySelectorAll(SHELL_TURN)];
-      for (const node of nodes) {
+      for (const node of document.querySelectorAll(TURN)) {
+        if (node.closest?.(`${OWN_SURFACES},.markdown,[data-markdown-text-style],[data-content-search-unit-key],[contenteditable]`)) continue;
+        if (node.matches?.(SEARCH_TURN) && (node.closest?.(LEGACY_TURN) || node.closest?.(SHELL_TURN))) continue;
         const id = turnIdOf(node);
         if (node.matches?.(SHELL_TURN)) {
-          if (node.closest(`${OWN_SURFACES},.markdown,[data-markdown-text-style],[data-content-search-unit-key],[contenteditable]`)) continue;
           const users = [...node.querySelectorAll('[data-content-search-unit-key$=":user"]')]
             .filter(slot => slot.closest('[data-turn-key]') === node);
           if (users.length !== 1 || !id) continue;
@@ -506,7 +514,7 @@ var CLF_DOM = (() => {
           previous = null;
           continue;
         }
-        const role = node.getAttribute('data-turn');
+        const role = node.getAttribute('data-turn') || searchUnitRole(node) || null;
         if (previous && id && previous.id === id && previous.role === role) {
           previous.nodes.push(node);
           continue;
@@ -519,7 +527,10 @@ var CLF_DOM = (() => {
   }
 
   function turnIdOf(node) {
-    if (!node?.matches?.(SHELL_TURN)) return node?.getAttribute?.('data-turn-id') || null;
+    if (!node?.matches?.(SHELL_TURN)) {
+      if (node?.matches?.(SEARCH_TURN)) return node.closest?.('[data-turn-key]')?.getAttribute('data-turn-key') || messageIdOf(node) || null;
+      return node?.getAttribute?.('data-turn-id') || null;
+    }
     const key = node.getAttribute('data-turn-key');
     if (key && !/^fallback-turn-\d+$/.test(key)) return key;
     return node.querySelector('[data-content-search-turn-key]')?.getAttribute('data-content-search-turn-key') || null;
@@ -528,14 +539,18 @@ var CLF_DOM = (() => {
   function messageIdOf(node) {
     const explicit = node?.getAttribute?.('data-message-id');
     if (explicit) return explicit;
+    const selected = node?.getAttribute?.('data-chatgpt-selection-message-id') ||
+      node?.querySelector?.('[data-chatgpt-selection-message-id]')?.getAttribute?.('data-chatgpt-selection-message-id');
+    if (selected) return selected;
+    const listed = node?.getAttribute?.('data-chatgpt-search-message-ids') || '';
+    const listedId = listed.trim().split(/\s+/).find(Boolean);
+    if (listedId) return listedId;
     const section = node?.closest?.(SHELL_TURN);
     const stamp = node?.getAttribute?.('data-clf-shell-message') || '';
     const owner = section?.getAttribute('data-clf-shell-owner');
     if (!owner || !stamp.startsWith(`${owner}:`)) return null;
     try { return decodeURIComponent(stamp.slice(owner.length + 1)) || null; } catch { return null; }
   }
-
-  const shellRole = node => /:(user|assistant)$/.exec(node?.getAttribute?.('data-content-search-unit-key') || '')?.[1] || '';
 
   const presentationTurns = turns;
 
@@ -1939,11 +1954,18 @@ var CLF_DOM = (() => {
       // paragraph: an extra block wrapper is not part of the authored prompt.
       // Text nodes keep markup literal; there is no paste fallback.
       const paragraph = document.createElement('p');
+      const literalPaste = box.matches('[data-composer-markdown]') &&
+        box.closest('form[data-chatgpt-composer]');
+      const content = literalPaste ? document.createElement('span') : paragraph;
+      if (literalPaste) {
+        content.setAttribute('data-prompt-literal-paste', '');
+        paragraph.append(content);
+      }
       value.split('\n').forEach((line, index) => {
-        if (index) paragraph.append(document.createElement('br'));
-        paragraph.append(document.createTextNode(line));
+        if (index) content.append(document.createElement('br'));
+        content.append(document.createTextNode(line));
       });
-      if (value === '') paragraph.append(document.createElement('br'));
+      if (value === '') content.append(document.createElement('br'));
       if (!document.execCommand('insertHTML', false, paragraph.innerHTML)) return reject('native_edit_rejected');
       const compact = text => String(text || '').replace(/\s+/g, '');
       const expected = mode === 'append' ? existing + value : value;

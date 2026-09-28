@@ -1196,6 +1196,28 @@ describe('activity feed', () => {
     });
   });
 
+  it('registers a stream request before the page has mounted a message id', async () => {
+    await pair();
+    const conversationId = '18181818-4040-6262-8484-969696969696';
+    const requestId = 'wfr_stream_before_dom';
+    const mapped = await request('POST', '/correlations', {
+      body: { conversationId, calls: [
+        { requestId, messageId: null, createTime: Date.now() / 1000 },
+        { requestId, messageId: null, createTime: Date.now() / 1000 }
+      ] }
+    });
+    expect(mapped.status).toBe(200);
+    expect(mapped.body).toMatchObject({ ok: true, conversationId, confirmed: [requestId], complete: true });
+
+    await recordToolCall({ tool: 'read', args: {}, content: [{ type: 'text', text: 'ok' }],
+      outcome: 'ok', durationMs: 1, startedAt: Date.now(), requestId });
+    const calls = await readEvents(mapped.body.sessionId, { kinds: ['tool_call'] });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.kind === 'tool_call' && calls[0].call).toMatchObject({
+      requestId, conversationId, attribution: 'request_id'
+    });
+  });
+
   it('still refuses correlation evidence that names no request id at all', async () => {
     await pair();
     const refused = await request('POST', '/correlations', {

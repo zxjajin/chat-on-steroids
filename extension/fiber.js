@@ -71,11 +71,14 @@
   /** Public generated-image descriptors retained per turn. Pixels never cross this boundary. */
   const MAX_GENERATED_IMAGES = 200;
   /** ChatGPT's own assistant turn sections, which is where a turn's message model hangs. */
+  const LEGACY_TURN_SECTION = 'section[data-testid^="conversation-turn"]';
   const SHELL_TURN = '[data-app-shell-main-surface] [data-thread-find-target="conversation"] [data-turn-key]';
-  const TURN_SECTION = `section[data-testid^="conversation-turn"], ${SHELL_TURN}`;
+  const SEARCH_TURN_ANCHOR = '[data-chatgpt-search-unit-key$=":user"]';
+  const SEARCH_TURN_UNIT = '[data-chatgpt-search-unit-key]';
+  const TURN_SECTION = `${LEGACY_TURN_SECTION}, ${SHELL_TURN}, ${SEARCH_TURN_ANCHOR}`;
   const PICKER = '[data-testid="composer-intelligence-picker-content"], [data-model-picker-view]';
   /** ChatGPT-rendered authored prose. Tool rows and this extension's own surfaces are excluded. */
-  const MARKDOWN = '.markdown';
+  const MARKDOWN = '.markdown, [data-markdown-text-style="assistant-message"]';
   const TOOL = 'span[class*="tool-message"], div.pointer-events-none.contents';
   const GENERATED_IMAGE = '[class~="group/imagegen-image"] img';
   const OWN_SURFACES = '.clf-stream, .clf-stage, .clf-composer, .clf-boot';
@@ -244,6 +247,7 @@
         conversations.set(conversation, serverId);
       }
       const values = [props.clientThreadId, props.conversationId, conversation && conversation.id,
+        Array.isArray(props.entry?.turn?.items) ? props.entry.conversationId : null,
         conversations.get(conversation), turn && turn.clientThreadId, turn && turn.conversationId];
       for (let index = 0; index < values.length; index++) {
         const value = str(values[index]);
@@ -1328,33 +1332,179 @@
    * exists for is the turn that rendered *no* row: climbing from a row cannot reach a turn
    * that has none, which is exactly the turn whose calls went missing.
    */
-  /** Stamp the mounted shell's exact native user message id onto its own user slot.
-   * The provider's rendered text is still read from the DOM; Fiber supplies identity only. */
-  function stampShellUserMessages() {
+  /** The mounted search-unit view on this Fiber branch; no page-owned object crosses worlds. */
+  function turnViewOf(fiber) {
+    for (let at = fiber, up = 0; at && up < MAX_CLIMB; up++, at = at.return) {
+      const turn = at.memoizedProps?.turn;
+      if (turn && typeof turn === 'object' && Array.isArray(turn.items) && turn.items.length <= MAX_ROWS) return turn;
+    }
+    return null;
+  }
+
+  function messagesFromTurnView(turn) {
+    if (!turn) return null;
+    const out = [], seen = new Set();
+    for (const item of turn.items) {
+      if (!item || typeof item !== 'object' || out.length >= MAX_CALLS) continue;
+      if (item.type === 'user-message') {
+        const id = str(item.messageId) || str(item.serverMessageId);
+        const body = typeof item.message === 'string' ? item.message.slice(0, MAX_RENDERED_TEXT) : '';
+        if (!id || seen.has(id) || !body) continue;
+        seen.add(id);
+        out.push({ id, author: { role: 'user' }, recipient: 'all',
+          ...(num(item.sentAtMs) !== null ? { create_time: item.sentAtMs / 1000 } : {}),
+          content: { content_type: 'text', parts: [body] }, metadata: {} });
+        continue;
+      }
+      if (item.type !== 'assistant-message') continue;
+      const id = str(item.messageId) || str(item.latestMessageId);
+      if (!id || seen.has(id)) continue;
+      const body = typeof item.content === 'string' ? item.content.slice(0, MAX_RENDERED_TEXT) : '';
+      const phase = str(item.phase), complete = item.completed === true;
+      const terminal = complete && phase === 'final_answer' && turn.status === 'complete';
+      const exchange = str(item.turnExchangeId);
+      seen.add(id);
+      out.push({ id, author: { role: 'assistant' }, recipient: 'all',
+        ...(phase === 'final_answer' ? { channel: 'final' } : {}),
+        ...(num(item.sentAtMs) !== null ? { create_time: item.sentAtMs / 1000 } : {}),
+        status: complete ? 'finished_successfully' : 'in_progress', end_turn: terminal,
+        content: { content_type: 'text', parts: body ? [body] : [] },
+        metadata: { message_type: 'next', ...(exchange ? { turn_exchange_id: exchange } : {}) } });
+    }
+    return out;
+  }
+
+  /** Only call identity is public; arguments, results and private reasoning stay on the page. */
+  function typedCallsOf(turn, shell = false) {
+    if (!turn || !Array.isArray(turn.items) || turn.items.length > MAX_ROWS) return [];
+    const out = [], seen = new Set(), duplicated = new Set();
+    let remaining = MAX_ROWS;
+    const visit = (items, depth = 0) => {
+      if (!Array.isArray(items) || depth > 4 || out.length >= MAX_CALLS) return;
+      for (const item of items) {
+        if (--remaining < 0 || out.length >= MAX_CALLS) return;
+        if (!item || typeof item !== 'object') continue;
+        if (item.type === 'chatgpt-reasoning-group') { visit(item.items, depth + 1); continue; }
+        if (item.type !== 'mcp-tool-call') continue;
+        const invocation = item.invocation && typeof item.invocation === 'object' ? item.invocation : null;
+        const app = invocation ? str(invocation.server) : null;
+        const tool = invocation ? toolName(str(invocation.tool)) : null;
+        const id = str(item.callId);
+        if (!app || !ourApp(app) || !tool || !id) continue;
+        if (seen.has(id)) duplicated.add(id);
+        seen.add(id);
+        out.push({ messageId: id, tool, order: out.length,
+          answered: shell ? item.completed === true : turn.status === 'complete',
+          requestId: null, createTime: null });
+      }
+    };
+    visit(turn.items);
+    const kept = out.filter(call => !duplicated.has(call.messageId));
+    for (let at = 0; at < kept.length; at++) kept[at].order = at;
+    return kept;
+  }
+
+  /** The mounted shell entry whose native id exactly owns this rendered turn. */
+  function shellEntryOf(section) {
+    const keys = [section.getAttribute('data-turn-key'),
+      section.querySelector('[data-content-search-turn-key]')?.getAttribute('data-content-search-turn-key')]
+      .filter(value => typeof value === 'string' && value.length > 0 && value.length <= 256);
+    if (!keys.length) return null;
+    for (let fiber = fiberOf(section), up = 0; fiber && up < MAX_CLIMB; up++, fiber = fiber.return) {
+      const candidate = fiber.memoizedProps?.entry;
+      if (Array.isArray(candidate?.turn?.items) && keys.includes(candidate.id) && candidate.turn.items.length <= MAX_ROWS)
+        return candidate;
+    }
+    return null;
+  }
+
+  function shellItemRole(item) {
+    return item?.type === 'user-message' ? 'user' : item?.type === 'assistant-message' ? 'assistant' : null;
+  }
+
+  /**
+   * The shell's typed turn items provide message identity; only authored text from that
+   * exact rendered slot may cross into the isolated world. Other item props (including tool
+   * payloads and reasoning state) are intentionally never serialized.
+   */
+  function shellMessagesOf(section, entry, budget) {
+    const items = entry?.turn?.items;
+    if (!Array.isArray(items) || items.length > MAX_ROWS) return [];
+    const pending = [];
+    const counts = new Map();
+    for (let index = 0; index < items.length; index++) {
+      const item = items[index];
+      const role = shellItemRole(item);
+      if (!role || !item || typeof item !== 'object') continue;
+      const id = str(item.messageId) || (role === 'user' ? str(item.serverMessageId) : null);
+      if (!id || (item.messageId && item.serverMessageId && item.messageId !== item.serverMessageId)) continue;
+      counts.set(id, (counts.get(id) || 0) + 1);
+      const key = `${entry.id}:${index}:${role}`;
+      const slots = [...section.querySelectorAll('[data-content-search-unit-key]')]
+        .filter(node => node.closest('[data-turn-key]') === section && node.getAttribute('data-content-search-unit-key') === key);
+      if (slots.length !== 1) continue;
+      const slot = slots[0];
+      const selector = role === 'assistant'
+        ? '.markdown, [data-markdown-text-style="assistant-message"]'
+        : '.whitespace-pre-wrap';
+      const textNodes = [...slot.querySelectorAll(selector)].filter(node => {
+        if (node.closest(OWN_SURFACES) || node.closest(TOOL) || node.closest('[data-interrupted]')) return false;
+        const parent = node.parentElement?.closest(selector);
+        return !parent || parent === slot || !slot.contains(parent);
+      });
+      const textParts = textNodes.map(node => typeof node.textContent === 'string' ? node.textContent : '').filter(Boolean);
+      // User shell slots can contain a plain text node without a styled child; assistant
+      // text must always come from a recognized authored-content subtree.
+      const rawText = budgetedText(textParts.join(role === 'assistant' ? '\n\n' : '\n') ||
+        (role === 'user' ? slot.textContent : ''), budget, MAX_RENDERED_TEXT);
+      pending.push({ id, role, index, slot, rawText });
+    }
+    return pending.filter(message => counts.get(message.id) === 1 && message.rawText).map(message => ({
+      messageId: message.id,
+      rawMessageId: message.id,
+      role: message.role,
+      stable: true,
+      order: message.index,
+      createTime: null,
+      rawText: message.rawText,
+      renderedHtml: ''
+    }));
+  }
+
+  function shellFinalMessageId(entry, renderedMessages) {
+    if (entry?.turn?.status !== 'complete') return null;
+    const terminal = entry.turn.items.filter(item => item?.type === 'assistant-message' &&
+      item.completed === true && item.phase === 'final_answer');
+    if (terminal.length !== 1) return null;
+    const id = str(terminal[0].messageId) || str(terminal[0].latestMessageId);
+    return id && renderedMessages.some(message => message.rawMessageId === id && message.role === 'assistant') ? id : null;
+  }
+
+  /** Stamp each unique typed shell message id onto its own exact rendered slot. */
+  function stampShellMessages() {
     const desired = new Map();
     try {
       for (const section of document.querySelectorAll(SHELL_TURN)) {
-        const keys = [section.getAttribute('data-turn-key'),
-          section.querySelector('[data-content-search-turn-key]')?.getAttribute('data-content-search-turn-key')]
-          .filter(value => typeof value === 'string' && value.length > 0 && value.length <= 256);
-        if (!keys.length) continue;
-        let entry = null;
-        for (let fiber = fiberOf(section), up = 0; fiber && up < MAX_CLIMB; up++, fiber = fiber.return) {
-          const candidate = fiber.memoizedProps?.entry;
-          if (Array.isArray(candidate?.turn?.items) && keys.includes(candidate.id)) { entry = candidate; break; }
+        const entry = shellEntryOf(section);
+        if (!entry) continue;
+        const stamps = new Map();
+        const seen = new Map();
+        for (let index = 0; index < entry.turn.items.length; index++) {
+          const item = entry.turn.items[index], role = shellItemRole(item);
+          if (!role || !item || typeof item !== 'object') continue;
+          const id = str(item.messageId) || (role === 'user' ? str(item.serverMessageId) : null);
+          if (!id || (item.messageId && item.serverMessageId && item.messageId !== item.serverMessageId)) continue;
+          seen.set(id, (seen.get(id) || 0) + 1);
+          const key = `${entry.id}:${index}:${role}`;
+          const slots = [...section.querySelectorAll('[data-content-search-unit-key]')]
+            .filter(node => node.closest('[data-turn-key]') === section && node.getAttribute('data-content-search-unit-key') === key);
+          if (slots.length === 1) stamps.set(slots[0], `${entry.id}:${encodeURIComponent(id)}`);
         }
-        if (!entry || entry.turn.items.length > MAX_ROWS) continue;
-        const users = entry.turn.items.map((item, index) => ({ item, index }))
-          .filter(row => row.item?.type === 'user-message');
-        if (users.length !== 1) continue;
-        const { item, index } = users[0];
-        const id = str(item.messageId) || str(item.serverMessageId);
-        if (!id || id.length > 256 || (item.messageId && item.serverMessageId && item.messageId !== item.serverMessageId)) continue;
-        const key = `${entry.id}:${index}:user`;
-        const slots = [...section.querySelectorAll('[data-content-search-unit-key]')]
-          .filter(node => node.closest('[data-turn-key]') === section && node.getAttribute('data-content-search-unit-key') === key);
-        if (slots.length !== 1) continue;
-        desired.set(section, { owner: entry.id, node: slots[0], message: `${entry.id}:${encodeURIComponent(id)}` });
+        for (const [node, stamp] of [...stamps]) {
+          const id = decodeURIComponent(stamp.slice(entry.id.length + 1));
+          if (seen.get(id) !== 1) stamps.delete(node);
+        }
+        desired.set(section, { owner: entry.id, stamps });
       }
       for (const section of document.querySelectorAll(SHELL_TURN)) {
         const proof = desired.get(section);
@@ -1364,11 +1514,12 @@
           else section.removeAttribute('data-clf-shell-owner');
         }
         for (const node of section.querySelectorAll('[data-clf-shell-message]')) {
-          if (node === proof?.node) continue;
+          if (proof?.stamps.has(node)) continue;
           node.removeAttribute('data-clf-shell-message');
         }
-        if (proof && proof.node.getAttribute('data-clf-shell-message') !== proof.message)
-          proof.node.setAttribute('data-clf-shell-message', proof.message);
+        if (proof) for (const [node, message] of proof.stamps) {
+          if (node.getAttribute('data-clf-shell-message') !== message) node.setAttribute('data-clf-shell-message', message);
+        }
       }
     } catch { /* Unknown shell ownership leaves no trusted user-message receipt. */ }
   }
@@ -1377,7 +1528,10 @@
     const out = [];
     let sections;
     try {
-      sections = [...document.querySelectorAll(TURN_SECTION)].filter(section => !section.matches?.(SHELL_TURN));
+      sections = [...document.querySelectorAll(TURN_SECTION)].filter(section =>
+        !(section.matches?.(SEARCH_TURN_ANCHOR) &&
+          (section.closest?.(SHELL_TURN) || section.closest?.(LEGACY_TURN_SECTION))) &&
+        !section.closest?.(`${OWN_SURFACES},.markdown,[data-markdown-text-style],[data-content-search-unit-key],[contenteditable]`));
     } catch {
       return out;
     }
@@ -1393,10 +1547,23 @@
     const groups = [];
     for (let at = 0; at < sections.length; at++) {
       const section = sections[at];
-      const id = str(section.getAttribute('data-turn-id'));
+      const shell = section.matches?.(SHELL_TURN) === true;
+      if (section.matches?.(SEARCH_TURN_ANCHOR)) {
+        const container = section.closest?.('[data-turn-key]');
+        const id = str(container?.getAttribute?.('data-turn-key')) || str(section.getAttribute('data-chatgpt-search-message-ids'));
+        let members = [section];
+        try { if (container) members = [...container.querySelectorAll(SEARCH_TURN_UNIT)]; } catch { /* Keep exact anchor. */ }
+        if (!members.includes(section)) members.unshift(section);
+        groups.push({ turnId: id, sections: members, fiberSection: section, shell: false, search: true, entry: null });
+        continue;
+      }
+      const id = str(shell
+        ? section.getAttribute('data-turn-key') || section.querySelector('[data-content-search-turn-key]')?.getAttribute('data-content-search-turn-key')
+        : section.getAttribute('data-turn-id'));
       const previous = groups[groups.length - 1];
-      if (id && previous && previous.turnId === id) previous.sections.push(section);
-      else groups.push({ turnId: id, sections: [section] });
+      if (!shell && id && previous && !previous.shell && previous.turnId === id) previous.sections.push(section);
+      else groups.push({ turnId: id, sections: [section], fiberSection: section, shell, search: false,
+        entry: shell ? shellEntryOf(section) : null });
     }
     // Keep the latest user/assistant boundary even while reading older history.
     // Visible groups share the remaining slots; no additional scan lifecycle.
@@ -1422,13 +1589,16 @@
     const responseBudget = { remaining: MAX_RESPONSE_TEXT };
     for (const at of [...selected].sort((a, b) => a - b)) {
       const group = groups[at];
-      const section = group.sections[0];
+      const section = group.fiberSection || group.sections[0];
       let entry = null;
       try {
         const fiber = fiberOf(section);
         if (!fiber) continue;
-        const messages = turnMessagesOf(fiber);
-        const calls = callsOf(messages);
+        const viewTurn = group.search ? turnViewOf(fiber) : null;
+        const messages = group.shell ? [] : viewTurn ? messagesFromTurnView(viewTurn) : turnMessagesOf(fiber);
+        const legacyCalls = callsOf(messages);
+        const calls = group.shell ? typedCallsOf(group.entry?.turn, true) :
+          legacyCalls.length ? legacyCalls : group.search ? typedCallsOf(viewTurn) : legacyCalls;
         const requests = requestIdsOf(messages);
         const conversation = conversationEvidenceOf(fiber);
         const exactAnchors = new Map();
@@ -1436,12 +1606,14 @@
         const exactImageNodes = new Map();
         const turnBudget = { remaining: Math.min(MAX_TURN_TEXT, responseBudget.remaining) };
         const before = turnBudget.remaining;
-        const renderedMessages = renderedMessagesOf(group.sections, messages, turnBudget, exactAnchors, conversation.conversationId);
+        const renderedMessages = group.shell
+          ? shellMessagesOf(section, group.entry, turnBudget)
+          : renderedMessagesOf(group.sections, messages, turnBudget, exactAnchors, conversation.conversationId);
         responseBudget.remaining -= before - turnBudget.remaining;
         const nativeActivities = nativeActivitiesOf(group.sections, messages, exactThoughtRows);
         const generatedImages = generatedImagesOf(group.sections, messages, exactImageNodes);
         const activities = nativeActivities.events;
-        const endMessageId = turnEndMessageId(messages);
+        const endMessageId = group.shell ? shellFinalMessageId(group.entry, renderedMessages) : turnEndMessageId(messages);
         if (
           calls.length === 0 &&
           requests.length === 0 &&
@@ -1490,11 +1662,15 @@
       // content.js will simply leave local turn ownership unset when the page turn id is null.
       if (entry) out.push(entry);
     }
-    for (let at = 0; at < sections.length; at++) {
-      const section = sections[at];
+    const cleanupSections = new Set();
+    try {
+      for (const section of document.querySelectorAll(`${LEGACY_TURN_SECTION}, ${SHELL_TURN}, ${SEARCH_TURN_UNIT}, [data-clf-fiber-turn]`)) cleanupSections.add(section);
+    } catch { for (const section of sections) cleanupSections.add(section); }
+    for (const group of groups) for (const section of group.sections) cleanupSections.add(section);
+    for (const section of cleanupSections) {
       try {
         if (!section || !section.getAttribute) continue;
-        for (const node of section.querySelectorAll('[data-clf-fiber-message], .markdown')) {
+        for (const node of section.querySelectorAll(`[data-clf-fiber-message], [data-markdown-text-style="assistant-message"], ${MARKDOWN}`)) {
           const wantedMessage = desiredMessageStamps.get(node);
           const currentMessage = node.getAttribute('data-clf-fiber-message');
           if (wantedMessage === undefined) {
@@ -1515,12 +1691,14 @@
             if (currentImage !== null) node.removeAttribute('data-clf-fiber-image');
           } else if (currentImage !== wantedImage) node.setAttribute('data-clf-fiber-image', wantedImage);
         }
-        const wanted = desiredTurnStamps.get(section);
-        const current = section.getAttribute('data-clf-fiber-turn');
-        if (wanted === undefined) {
-          if (current !== null && section.removeAttribute) section.removeAttribute('data-clf-fiber-turn');
-        } else if (current !== wanted && section.setAttribute) {
-          section.setAttribute('data-clf-fiber-turn', wanted);
+        for (const stamped of [section, ...section.querySelectorAll(SEARCH_TURN_UNIT)]) {
+          const wanted = desiredTurnStamps.get(stamped);
+          const current = stamped.getAttribute('data-clf-fiber-turn');
+          if (wanted === undefined) {
+            if (current !== null) stamped.removeAttribute('data-clf-fiber-turn');
+          } else if (current !== wanted) {
+            stamped.setAttribute('data-clf-fiber-turn', wanted);
+          }
         }
       } catch {
         // One hostile/stale DOM node must not cost the remaining turns their evidence.
@@ -1578,7 +1756,7 @@
     }
     // Row stamps must exist before native activity projection excludes connectors.
     try {
-      stampShellUserMessages();
+      stampShellMessages();
       turns = turnsOf(scanToken);
     } catch {
       turns = [];

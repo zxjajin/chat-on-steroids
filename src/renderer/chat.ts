@@ -1018,7 +1018,12 @@ function paintDeliveryControls(): void {
   const explicitInjection = (canInject || canSendDirectly) && (!files.length || injectableAttachments(files));
   if (injectionAction) injectionAction.hidden = !explicitInjection;
   if ($<HTMLSelectElement>('sendMode').value === 'tool' && !explicitInjection) $<HTMLSelectElement>('sendMode').value = 'auto';
-  if (canInject && explicitInjection && $<HTMLSelectElement>('sendMode').value === 'auto') $<HTMLSelectElement>('sendMode').value = 'tool';
+  // A plain follow-up must not silently become a tool-only message. A turn can finish
+  // without another eligible tool call; keep Inject now as an explicit choice.
+  if (canInject && !files.length && $<HTMLSelectElement>('sendMode').value === 'auto')
+    $<HTMLSelectElement>('sendMode').value = 'after-turn';
+  if (canInject && files.length && explicitInjection && $<HTMLSelectElement>('sendMode').value === 'auto')
+    $<HTMLSelectElement>('sendMode').value = 'tool';
   if (!canInject && !canSendDirectly && !queueAtFinish) $<HTMLSelectElement>('sendMode').value = 'auto';
   const pending = pendingComposerInput();
   const stop = (working || !!pending) && !currentPreparedPlan() && !authoredComposerText().trim() && !(imageDrafts.get(draftKey())?.length);

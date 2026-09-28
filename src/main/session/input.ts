@@ -98,6 +98,8 @@ const entrySchema = inputArgs.extend({
 export type InputEntry = z.infer<typeof entrySchema>;
 const STATE = 'session-input';
 const TOOL_INPUT_TEXT_BYTES = 128000;
+/** A confirmed send receipt lands in seconds. This only bounds one that is never reported. */
+const UNCERTAIN_SEND_MS = 15 * 60_000;
 export const TOOL_INPUT_HEADER = '\n--- New instructions from the user ---\n';
 export interface ToolInputBatch {
   messages: Array<{ text: string; images: InputImage[] }>;
@@ -427,6 +429,13 @@ async function expireQueued(current: InputEntry[]): Promise<InputEntry[]> {
         ? 'Not sent: browser preparation timed out. This attempt was cancelled.'
         : 'Stopped waiting for delivery confirmation. The message may already have been sent; it will not be resent.' };
     }
+    // Once native Send was authorized, this row can no longer be offered or replayed.
+    // If its receipt is lost, it would otherwise retain the whole session indefinitely
+    // and block every later message. Retire only ordinary authored sends: recovery,
+    // openings and combined deliveries keep their existing ownership rules.
+    if (row.state === 'browser' && row.sendAuthorizedAt !== undefined && !row.recovery && !row.opening &&
+        !row.companionInputId && manualInput(row) && Date.now() - row.sendAuthorizedAt >= UNCERTAIN_SEND_MS)
+      return { ...row, state: 'cancelled', error: 'Stopped waiting for delivery confirmation. The message may already have been sent; it will not be resent.' };
     return row;
   }));
   for (let i = 0; i < next.length; i++) {

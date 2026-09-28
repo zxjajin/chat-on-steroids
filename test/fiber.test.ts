@@ -1469,3 +1469,146 @@ it('stamps a shell user row only when the mounted turn and Fiber item identify t
     expect(doc.querySelector('[data-content-search-unit-key]')?.getAttribute('data-clf-shell-message')).toBe('turn-123:different-message');
   } finally { page.window.close(); }
 });
+
+it('reads public shell assistant output by the exact typed turn item and conversation', async () => {
+  const page = new JSDOM('<div data-app-shell-main-surface><div data-thread-find-target="conversation"><div data-turn-key="turn-shell-1" data-content-search-turn-key="turn-shell-1"><div data-content-search-unit-key="turn-shell-1:0:user"><div class="whitespace-pre-wrap">Question from shell</div></div><div data-content-search-unit-key="turn-shell-1:1:assistant"><div data-markdown-text-style="assistant-message"><div class="markdown">Visible answer from shell</div></div></div></div></div></div>', {
+    url: `https://chatgpt.com/c/${THREAD}`, runScripts: 'outside-only', pretendToBeVisual: true
+  });
+  try {
+    const win = page.window, doc = win.document;
+    const section = doc.querySelector('[data-turn-key]')! as any;
+    section.__reactFiber$shell = {
+      memoizedProps: {
+        entry: {
+          id: 'turn-shell-1', conversationId: THREAD,
+          turn: { items: [
+            { type: 'user-message', messageId: 'shell-user-1', message: 'Question from shell' },
+            { type: 'assistant-message', messageId: 'shell-assistant-1' },
+            { type: 'private-reasoning', message: 'must not cross the bridge' }
+          ] }
+        }
+      }, return: null
+    };
+    win.eval(source);
+    const nonce = 'shell-transcript';
+    const reply = new Promise<Record<string, any>>(resolve => {
+      const receive = (event: MessageEvent) => {
+        if (event.data?.source !== 'clf-fiber-reply' || event.data.nonce !== nonce) return;
+        win.removeEventListener('message', receive as any); resolve(event.data);
+      };
+      win.addEventListener('message', receive as any);
+    });
+    win.dispatchEvent(new win.MessageEvent('message', { data: { source: 'clf-fiber-ask', nonce }, source: win as unknown as Window }));
+    const data = await reply;
+    expect(data.turns).toHaveLength(1);
+    expect(data.turns[0]).toMatchObject({
+      turnId: 'turn-shell-1', conversationId: THREAD,
+      messages: [
+        { messageId: 'shell-user-1', rawMessageId: 'shell-user-1', role: 'user', rawText: 'Question from shell' },
+        { messageId: 'shell-assistant-1', rawMessageId: 'shell-assistant-1', role: 'assistant', rawText: 'Visible answer from shell' }
+      ]
+    });
+    expect(data.turns[0].endMessageId).toBeNull();
+    expect(JSON.stringify(data)).not.toContain('must not cross the bridge');
+    expect(doc.querySelector('[data-content-search-unit-key$=":assistant"]')?.getAttribute('data-clf-shell-message'))
+      .toBe('turn-shell-1:shell-assistant-1');
+  } finally { page.window.close(); }
+});
+
+it('closes a shell turn only when its rendered assistant item is a completed final', async () => {
+  const page = new JSDOM('<div data-app-shell-main-surface><div data-thread-find-target="conversation"><div data-turn-key="shell-final"><div data-content-search-unit-key="shell-final:0:user"><div class="whitespace-pre-wrap">Question</div></div><div data-content-search-unit-key="shell-final:1:assistant"><div class="markdown">Answer</div></div></div></div></div>', {
+    url: `https://chatgpt.com/c/${THREAD}`, runScripts: 'outside-only', pretendToBeVisual: true
+  });
+  try {
+    const win = page.window, section = win.document.querySelector('[data-turn-key]')! as any;
+    section.__reactFiber$shell = { memoizedProps: { entry: {
+      id: 'shell-final', conversationId: THREAD, turn: { status: 'complete', items: [
+        { type: 'user-message', messageId: 'shell-user', message: 'Question' },
+        { type: 'assistant-message', messageId: 'shell-answer', completed: true, phase: 'final_answer' },
+        { type: 'chatgpt-reasoning-group', items: [{ type: 'mcp-tool-call', callId: 'shell-call',
+          completed: true, invocation: { server: APP, tool: `${LINK}/read`, arguments: { secret: 'must-not-cross' } } }] }
+      ] }
+    } }, return: null };
+    win.eval(source);
+    const nonce = 'shell-complete';
+    const reply = new Promise<Record<string, any>>(resolve => {
+      const receive = (event: MessageEvent) => {
+        if (event.data?.source !== 'clf-fiber-reply' || event.data.nonce !== nonce) return;
+        win.removeEventListener('message', receive as any); resolve(event.data);
+      };
+      win.addEventListener('message', receive as any);
+    });
+    win.dispatchEvent(new win.MessageEvent('message', { data: { source: 'clf-fiber-ask', nonce }, source: win as unknown as Window }));
+    const data = await reply;
+    expect(data.turns).toHaveLength(1);
+    expect(data.turns[0].endMessageId).toBe('shell-answer');
+    expect(data.turns[0].calls).toEqual([{ messageId: 'shell-call', tool: 'read', order: 0,
+      answered: true, requestId: null, createTime: null }]);
+    expect(JSON.stringify(data)).not.toContain('must-not-cross');
+  } finally { page.window.close(); }
+});
+
+it('does not borrow a shell assistant message from a mismatched turn slot', async () => {
+  const page = new JSDOM('<div data-app-shell-main-surface><div data-thread-find-target="conversation"><div data-turn-key="turn-shell-1"><div data-content-search-unit-key="turn-shell-1:0:user"><div class="whitespace-pre-wrap">Question</div></div><div data-content-search-unit-key="another-turn:1:assistant"><div class="markdown">Foreign answer</div></div></div></div></div>', {
+    url: `https://chatgpt.com/c/${THREAD}`, runScripts: 'outside-only', pretendToBeVisual: true
+  });
+  try {
+    const win = page.window, section = win.document.querySelector('[data-turn-key]')! as any;
+    section.__reactFiber$shell = { memoizedProps: { entry: {
+      id: 'turn-shell-1', conversationId: THREAD,
+      turn: { items: [{ type: 'assistant-message', messageId: 'shell-assistant-1' }] }
+    } }, return: null };
+    win.eval(source);
+    const nonce = 'shell-wrong-slot';
+    const reply = new Promise<Record<string, any>>(resolve => {
+      const receive = (event: MessageEvent) => {
+        if (event.data?.source !== 'clf-fiber-reply' || event.data.nonce !== nonce) return;
+        win.removeEventListener('message', receive as any); resolve(event.data);
+      };
+      win.addEventListener('message', receive as any);
+    });
+    win.dispatchEvent(new win.MessageEvent('message', { data: { source: 'clf-fiber-ask', nonce }, source: win as unknown as Window }));
+    const data = await reply;
+    expect(data.turns).toEqual([]);
+    expect(win.document.querySelector('[data-clf-shell-message]')).toBeNull();
+  } finally { page.window.close(); }
+});
+
+it('reads a search-unit turn final and tool identity without leaking invocation arguments', async () => {
+  const page = new JSDOM('<div data-turn-key="search-turn"><div data-chatgpt-search-unit-key="search-turn:0:user" data-chatgpt-search-message-ids="search-user">Question</div><div data-chatgpt-search-unit-key="search-turn:1:assistant" data-chatgpt-selection-message-id="search-final"><div data-markdown-text-style="assistant-message">Answer</div></div></div>', {
+    url: `https://chatgpt.com/c/${THREAD}`, runScripts: 'outside-only', pretendToBeVisual: true
+  });
+  try {
+    const win = page.window, doc = win.document;
+    const anchor = doc.querySelector('[data-chatgpt-search-unit-key$=":user"]')! as any;
+    anchor.__reactFiber$search = { memoizedProps: {
+      conversationId: THREAD,
+      turn: { status: 'complete', items: [
+        { type: 'user-message', messageId: 'search-user', message: 'Question' },
+        { type: 'chatgpt-reasoning-group', items: [{ type: 'mcp-tool-call', callId: 'search-call',
+          invocation: { server: APP, tool: `${LINK}/read`, arguments: { secret: 'never-serialize-this' } } }] },
+        { type: 'assistant-message', messageId: 'search-final', content: 'Answer', completed: true,
+          phase: 'final_answer', turnExchangeId: 'search-exchange' }
+      ] }
+    }, return: null };
+    win.eval(source);
+    const nonce = 'search-unit-final';
+    const reply = new Promise<Record<string, any>>(resolve => {
+      const receive = (event: MessageEvent) => {
+        if (event.data?.source !== 'clf-fiber-reply' || event.data.nonce !== nonce) return;
+        win.removeEventListener('message', receive as any); resolve(event.data);
+      };
+      win.addEventListener('message', receive as any);
+    });
+    win.dispatchEvent(new win.MessageEvent('message', { data: { source: 'clf-fiber-ask', nonce }, source: win as unknown as Window }));
+    const data = await reply;
+    expect(data.turns).toHaveLength(1);
+    expect(data.turns[0]).toMatchObject({ turnId: 'search-turn', conversationId: THREAD,
+      endMessageId: 'search-final', calls: [{ messageId: 'search-call', tool: 'read', answered: true }] });
+    expect(data.turns[0].messages).toEqual(expect.arrayContaining([
+      expect.objectContaining({ rawMessageId: 'search-user', role: 'user', rawText: 'Question' }),
+      expect.objectContaining({ rawMessageId: 'search-final', role: 'assistant', rawText: 'Answer' })
+    ]));
+    expect(JSON.stringify(data)).not.toContain('never-serialize-this');
+  } finally { page.window.close(); }
+});

@@ -1841,6 +1841,27 @@ it('shows injection only for an exact active turn, never merely recent chat acti
   expect((w.document.getElementById('sendMode') as HTMLSelectElement).value).toBe('auto');
 });
 
+it('queues an ordinary follow-up after the turn by default while keeping tool injection explicit', async () => {
+  const { w, append, live } = await boot([]);
+  const api = (w as any).api;
+  const original = api.getSessionControls;
+  api.getSessionControls = async (id: string) => ({ ok: true, data: { ...(await original(id)).data,
+    activeTurnId: 'running-turn', canInject: true, canSendDirectly: false, queueAtFinish: false } });
+  const mode = w.document.getElementById('sendMode') as HTMLSelectElement;
+  mode.value = 'auto';
+  await append([]);
+  expect(mode.value).toBe('after-turn');
+  const input = w.document.getElementById('chatInput') as HTMLTextAreaElement;
+  input.value = 'Follow up when this answer finishes';
+  input.dispatchEvent(new w.Event('input'));
+  w.document.getElementById('composer')!.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
+  await settle();
+  expect(live.sent.at(-1)).toMatchObject({ text: 'Follow up when this answer finishes', mode: 'after-turn' });
+  expect(live.sent.at(-1)?.delivery).toBeUndefined();
+  (w.document.querySelector('#sendOptions [data-delivery="tool"]') as HTMLButtonElement).click();
+  expect(mode.value).toBe('tool');
+});
+
 it('shows Send directly before MCP, keeps After this turn selected, and changes the visible menu after MCP', async () => {
   const { w, append } = await boot([]);
   const api = (w as any).api;
@@ -2443,7 +2464,7 @@ it('keeps actual-turn Stop through two authored sends and stops only the capture
     expect(send.dataset.action).toBe('stop');
   }
   expect(live.sent.map(row => row.text)).toEqual(['First new direction', 'Second new direction']);
-  expect(live.sent.every(row => row.sessionId === '2026-09-02-test0001' && row.mode === 'auto')).toBe(true);
+  expect(live.sent.every(row => row.sessionId === '2026-09-02-test0001' && row.mode === 'after-turn')).toBe(true);
   // A queued follow-up does not replace the real active turn as Stop's authority.
   form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
   await settle();

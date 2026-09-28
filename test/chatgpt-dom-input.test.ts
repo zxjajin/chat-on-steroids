@@ -79,6 +79,17 @@ describe('one native HTML edit for prepared text', () => {
     expect(box.innerHTML.replaceAll('<br>', '\n')).toContain('&lt;abc&gt;');
     expect(box.textContent!.replace(/\s/g, '')).toBe(value.replace(/\s/g, ''));
   });
+  it('marks text as literal in the current ChatGPT Markdown composer', () => {
+    document.body.innerHTML = '<form data-chatgpt-composer><div id="prompt-textarea" data-composer-markdown contenteditable="true" role="textbox"></div></form>';
+    box = document.getElementById('prompt-textarea')!;
+    const value = 'Keep *markdown* literal: a_b & <tag>\nsecond line';
+
+    expect(api.insertPrompt(value, true)).toBe(true);
+    const literal = box.querySelector('[data-prompt-literal-paste]');
+    expect(literal).not.toBeNull();
+    expect(literal!.textContent!.replace(/\s/g, '')).toBe(value.replace(/\s/g, ''));
+    expect(box.querySelectorAll('[data-prompt-literal-paste]')).toHaveLength(1);
+  });
   it('preserves an existing draft when native editing refuses it without falling back', () => {
     const nativeEdit = vi.fn(() => false); document.execCommand = nativeEdit;
     expect(api.insertPrompt('replacement', true)).toBe(false);
@@ -234,10 +245,22 @@ describe('one native Send and bounded acceptance observation', () => {
   });
 
   it('reads a shell user receipt only from the Fiber-stamped native slot', () => {
-    document.body.innerHTML = '<div data-app-shell-main-surface><div data-thread-find-target="conversation"><div data-turn-key="turn-123" data-clf-shell-owner="turn-123"><div data-content-search-unit-key="turn-123:0:user" data-clf-shell-message="turn-123:user-456"><div class="whitespace-pre-wrap">Queued shell message</div></div></div></div></div>';
-    expect(api.messages()).toEqual([expect.objectContaining({ id: 'user-456', role: 'user', text: 'Queued shell message' })]);
-    document.querySelector('[data-clf-shell-message]')!.removeAttribute('data-clf-shell-message');
-    expect(api.messages()).toEqual([]);
+    document.body.innerHTML = '<div data-app-shell-main-surface><div data-thread-find-target="conversation"><div data-turn-key="turn-123" data-clf-shell-owner="turn-123"><div data-content-search-unit-key="turn-123:0:user" data-clf-shell-message="turn-123:user-456"><div class="whitespace-pre-wrap">Queued shell message</div></div><div data-content-search-unit-key="turn-123:1:assistant" data-clf-shell-message="turn-123:assistant-789"><div class="markdown">Shell assistant reply</div></div></div></div></div>';
+    expect(api.messages()).toEqual([
+      expect.objectContaining({ id: 'user-456', role: 'user', text: 'Queued shell message' }),
+      expect.objectContaining({ id: 'assistant-789', role: 'assistant', text: 'Shell assistant reply' })
+    ]);
+    for (const node of document.querySelectorAll('[data-clf-shell-message]')) node.removeAttribute('data-clf-shell-message');
+    expect(api.messages().map(message => message.id)).toEqual(['assistant:turn-123']);
+    expect(api.messages().some(message => message.id === 'assistant-789')).toBe(false);
+  });
+
+  it('reads the new search-unit user and assistant identities without a Fiber stamp', () => {
+    document.body.innerHTML = '<div data-turn-key="search-turn"><div data-chatgpt-search-unit-key="search-turn:0:user" data-chatgpt-search-message-ids="search-user"><div class="whitespace-pre-wrap">Search question</div></div><div data-chatgpt-search-unit-key="search-turn:1:assistant" data-chatgpt-selection-message-id="search-answer"><div data-markdown-text-style="assistant-message">Search answer</div></div></div>';
+    expect(api.messages()).toEqual([
+      expect.objectContaining({ id: 'search-user', role: 'user', text: 'Search question', turnId: 'search-turn' }),
+      expect.objectContaining({ id: 'search-answer', role: 'assistant', text: 'Search answer', turnId: 'search-turn' })
+    ]);
   });
 
   it.each([false, true])('retires only the unchanged accepted composer text (new draft: %s)', async edited => {

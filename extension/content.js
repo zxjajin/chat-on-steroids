@@ -9953,7 +9953,8 @@
    * immediately when the composer already exists, otherwise wake the instant React mounts
    * one, with only a bounded timer as the failure deadline.
    */
-  function waitForComposer(timeoutMs = 12_000) {
+  function waitForComposer(timeoutMs = 12_000, stillCurrent = () => true) {
+    if (!stillCurrent()) return Promise.resolve(null);
     const current = CLF_DOM.composer();
     if (current && current.isConnected) return Promise.resolve(current);
     return new Promise((resolve) => {
@@ -9965,6 +9966,7 @@
         resolve(value);
       };
       const check = () => {
+        if (!stillCurrent()) return finish(null);
         const composer = CLF_DOM.composer();
         if (composer && composer.isConnected) finish(composer);
       };
@@ -10178,6 +10180,14 @@
     if ((boot.model || boot.reasoningEffort) && !(await CLF_DOM.selectModelSettings(boot.model, boot.reasoningEffort, stillOnTarget))) {
       return void (await fail('The requested model or reasoning is unavailable or could not be confirmed in ChatGPT'));
     }
+    // ChatGPT can replace the home composer during its Chat/Work/model transition even
+    // after the picker has confirmed the requested selection. The pre-selection editor
+    // is no longer authoritative: wait for the replacement under the same command,
+    // route and document-epoch fence before inserting the frozen bootstrap.
+    if ((boot.model || boot.reasoningEffort) && !(await waitForComposer(12_000, stillOnTarget))) {
+      if (await failIfRetargeted()) return;
+      return void (await fail('ChatGPT never re-exposed a usable composer after model selection'));
+    }
     const selectionConfirmedAt = Date.now();
     const publishBootstrapSelection = (id) => {
       if (!boot.model || CLF_DOM.conversationId() !== id) return;
@@ -10333,25 +10343,18 @@
       return;
     }
 
-    // The conversation id only exists once ChatGPT has accepted the message, and it is the
-    // whole point of the report: for a worker it is what binds the slot to this chat and
-    // starts it, and for a resume it is what the session is moved onto. Bounded by the same
-    // clock the app is running, so this page never outlives the command it is working on.
-    for (let tries = 0; tries < 80; tries++) {
-      await sleep(500);
-      const found = boot.type === 'resume' ? bootstrapConversation() : CLF_DOM.conversationId();
-      if (found) {
-        if (boot.type === 'resume') rememberResumeGoalPending(found, boot.id);
-        publishBootstrapSelection(found);
-        const acknowledged = await ask({ type: 'ack', id: boot.id, status: 'sent', conversationId: found, agent, client: RUN_ID });
-        await clearAcknowledgedBootstrap(acknowledged);
-        return;
-      }
-    }
-    // An unnamed resume remains ambiguous, including after a native transport banner.
-    // The bridge retains its leased dispatch; only exact reconciliation may bind it later.
-    if (boot.type === 'resume') return;
-    await ask({ type: 'ack', id: boot.id, status: 'sent', agent, client: RUN_ID });
+    // A fresh bootstrap is not accepted merely because ChatGPT assigned a conversation URL.
+    // Require the exact submitted user row, and wake on native page changes rather than
+    // repeated 500 ms sleeps (which are throttled in background tabs). This same receipt
+    // binds both new workers and resumed sessions; an absent row stays ambiguous and is
+    // never reported as a successful send.
+    const found = await waitPageView(bootstrapConversation,
+      () => !attempt?.cancelled && sendingBootstrap(), 40000);
+    if (!found || !sendingBootstrap()) return;
+    if (boot.type === 'resume') rememberResumeGoalPending(found, boot.id);
+    const acknowledged = await ask({ type: 'ack', id: boot.id, status: 'sent', conversationId: found, agent, client: RUN_ID });
+    await publishBootstrapSelection(found);
+    await clearAcknowledgedBootstrap(acknowledged);
     } finally { bootstrapDraft.dispose(); }
   }
 

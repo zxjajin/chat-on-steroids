@@ -489,6 +489,9 @@ The native WebSocket `conversation-turn-stream` handoff uses the same complete-e
 requiring its outer conversation to match the inner event. It observes existing messages on
 ChatGPT secure sockets without sending, subscribing or polling; envelopes and frames are bounded.
 A 64-pair document cache deduplicates both transports and replays IDs at content readiness.
+The bridge accepts a validated request-id-only stream sighting before ChatGPT mounts a
+message row, assigning a deterministic non-provider storage key. That key is not a transcript
+identity; the request id remains the exact ownership join.
 Content requires the matching route and document epoch, retaining one-shot stream proof through
 temporary ACK failures for at most 15 minutes using the existing observer/backoff. Missing stream
 metadata retains the Fiber path. Fetch reattachment at DOM readiness captures each downstream
@@ -831,6 +834,10 @@ text remains separate. A failed write cannot later become a successful hidden en
 | Image injection | When **Inject now** is available, an image-only selection of up to four PNG/JPEG/WebP/GIF files enters the exact chat's outer tool result as image blocks. New Chat, after-turn, mixed files and larger selections use native upload. |
 | Decision/planner | Role-specific request through the same claim/receipt infrastructure, with its own result consumer and cancellation. |
 
+For plain text in an active injectable turn, the composer defaults to **After this turn**;
+**Inject now** remains an explicit choice. This prevents a normal follow-up from being
+captured by a tool-only route that may never see another eligible tool call.
+
 Browser delivery elects one exact tab/document/epoch and checks the right existing conversation
 or fresh-chat ownership. New-chat reuse requires a visible composer before election and after
 native preparation; unavailable surfaces are skipped so the first send can open one clean chat.
@@ -965,6 +972,9 @@ receipts may settle a cancelled wait; that does not authorize a second message. 
 and history publication are independent: a recorder failure retries canonical history, not
 transport. Queued unclaimed input follows its durable session to the successor; already handed
 claims keep their original exact document until their outcome resolves.
+An ordinary authored browser send whose authorization receipt never arrives is retired after
+15 minutes as possibly sent, never replayed; this releases later messages without weakening
+opening, recovery or combined-delivery custody.
 
 Desktop delivery captures the native user-message identity inside the same Send acceptance
 operation that proves its text and route. It must not discard that receipt and rediscover the
@@ -1444,6 +1454,10 @@ a different lifetime from MV3 suspension (§2).
 
 An idle composer or missing Stop button alone does not prove a completed answer. Turn state
 combines native message/terminal evidence with exact user/assistant identities and live tools.
+The extension reads both legacy sections and the newer search-unit layout. Search-unit Fiber
+items supply bounded public message/call identities; the older shell slot reader remains in
+place. A shell completion requires its rendered assistant item to be completed final output
+and its native turn status to be complete, not just a quiet DOM.
 Recording and presentation group only consecutive native sections with the same role/page id.
 A user question separates responses even when ChatGPT recycles that page id. Fiber's exact
 section stamp owns the local-generation join; a page-id hint is usable only when unique in
@@ -2787,11 +2801,15 @@ hand-editing staged binaries. Native and editor dependencies need actual runtime
 package, and verify that runtime's relevant flow. An installer exit code or version label is
 insufficient. A dirty-tree snapshot request does not authorize exposing all local Git history.
 
-`update.ts` checks immediately and every six hours with one in-flight pass. Download to a
-partial file, verify SHA-256 before staging/adoption, and rehash at ordinary quit before handing
-off. Windows NSIS/Linux AppImage can apply automatically; macOS/DEB present the supported manual
-path, development does not stage. Explicit install may relaunch; ordinary quit does not force
-relaunch. Failed checks never replace a verified staged candidate with unverified bytes.
+This fork's updater targets `zxjajin/chat-on-steroids`; automatic checks are intentionally
+disabled until that repository publishes its own reviewed release artifacts and checksum
+manifest. Never stage or install the upstream author's executable into this fork. If automatic
+checks are deliberately re-enabled after a fork release channel exists, retain the single-flight
+check, partial-file download, SHA-256 verification before staging/adoption, and rehash at ordinary
+quit before handoff. Windows NSIS/Linux AppImage can apply automatically; macOS/DEB present the
+supported manual path, development does not stage. Explicit install may relaunch; ordinary quit
+does not force relaunch. Failed checks never replace a verified staged candidate with unverified
+bytes.
 
 CI verifies supported OS families; native `release.yml` builds/smokes all six targets, then
 assembles installers, extension ZIP, native-sources archive and `SHA256SUMS.txt`. `publish.yml`

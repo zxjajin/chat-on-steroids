@@ -49,20 +49,13 @@ import { logInfo, logWarn } from './logger.js';
 import { APP_VERSION } from './version.js';
 import { isNewer, type UpdateStatus } from '../shared/types.js';
 
-const REPO = 'totec448-spec/chat-on-steroids';
+// This fork must never install binaries published by the upstream project. Any future release
+// lookup must remain scoped to this repository.
+const REPO = 'zxjajin/chat-on-steroids';
 const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 
 const CHECK_TIMEOUT_MS = 15_000;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60_000;
-/**
- * How often the check repeats while the app is open.
- *
- * This app lives in the tray and is routinely left running for days, so "once per start" was in
- * practice "never" for exactly the installations nobody is about to restart to collect a fix.
- * Six hours is slow enough to be invisible, and costs one request whenever there is nothing new.
- */
-const RECHECK_MS = 6 * 60 * 60_000;
-
 /**
  * The artifact this exact installation can apply to itself, or null for one that cannot.
  *
@@ -127,14 +120,12 @@ function set(next: Partial<UpdateStatus>): void {
 }
 
 /**
- * Runs the check at startup, and keeps running it for as long as the app is open.
- *
- * The timer is unreferenced: it is a background courtesy, never a reason for the process to stay
- * alive, and the shutdown sequence does not have to know it exists.
+ * Automatic update checks are disabled for this fork. The upstream project publishes a different
+ * executable with different local changes; silently applying it would overwrite this user's build.
+ * Update checks remain off until this fork publishes and verifies its own release artifacts.
  */
 export function startUpdateChecks(): void {
-  void checkForUpdates();
-  setInterval(() => void checkForUpdates(), RECHECK_MS).unref();
+  // Intentionally empty: this fork must not download or apply releases in the background.
 }
 
 /**
